@@ -1,0 +1,83 @@
+[debug] [2025-02-18T21:33:03.854Z] ----------------------------------------------------------------------
+[debug] [2025-02-18T21:33:03.859Z] Command:       /usr/local/bin/node /usr/local/bin/firebase init
+[debug] [2025-02-18T21:33:03.860Z] CLI Version:   13.31.1
+[debug] [2025-02-18T21:33:03.860Z] Platform:      linux
+[debug] [2025-02-18T21:33:03.860Z] Node Version:  v23.8.0
+[debug] [2025-02-18T21:33:03.861Z] Time:          Tue Feb 18 2025 13:33:03 GMT-0800 (Pacific Standard Time)
+[debug] [2025-02-18T21:33:03.861Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2025-02-18T21:33:03.888Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2025-02-18T21:33:03.889Z] > authorizing via signed-in user (dfitzpatrick@zagmail.gonzaga.edu)
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  /mnt/c/Users/drewe/OneDrive - Gonzaga University/Project Lab/SpotifyNewAuthorization
+
+Before we get started, keep in mind:
+
+  * You are currently outside your home directory
+
+[info] 
+=== Project Setup
+[info] 
+[info] First, let's associate this project directory with a Firebase project.
+[info] You can create multiple project aliases by running firebase use --add, 
+[info] but for now we'll just set up a default project.
+[info] 
+[debug] [2025-02-18T21:34:08.939Z] Checked if tokens are valid: true, expires at: 1739917881617
+[debug] [2025-02-18T21:34:08.939Z] Checked if tokens are valid: true, expires at: 1739917881617
+[debug] [2025-02-18T21:34:08.942Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects pageSize=100
+[debug] [2025-02-18T21:34:09.833Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects 200
+[debug] [2025-02-18T21:34:09.834Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects [omitted]
+[info] i  Using project spotifygenie-16a23 (SpotifyGenie) 
+[info] 
+=== Apphosting Setup
+[debug] [2025-02-18T21:34:15.388Z] Checked if tokens are valid: true, expires at: 1739917881617
+[debug] [2025-02-18T21:34:15.388Z] Checked if tokens are valid: true, expires at: 1739917881617
+[debug] [2025-02-18T21:34:15.388Z] >>> [apiv2][query] GET https://cloudbilling.googleapis.com/v1/projects/spotifygenie-16a23/billingInfo [none]
+[debug] [2025-02-18T21:34:16.076Z] <<< [apiv2][status] GET https://cloudbilling.googleapis.com/v1/projects/spotifygenie-16a23/billingInfo 200
+[debug] [2025-02-18T21:34:16.076Z] <<< [apiv2][body] GET https://cloudbilling.googleapis.com/v1/projects/spotifygenie-16a23/billingInfo {"name":"projects/spotifygenie-16a23/billingInfo","projectId":"spotifygenie-16a23","billingAccountName":"","billingEnabled":false}
+[info] i  Writing default settings to apphosting.yaml... 
+[info] ✔  Wrote apphosting.yaml 
+[info] ✔  Create a new App Hosting backend with `firebase apphosting:backends:create` 
+[info] 
+=== Hosting Setup
+[debug] [2025-02-18T21:34:16.107Z] Checked if tokens are valid: true, expires at: 1739917881617
+[debug] [2025-02-18T21:34:16.107Z] Checked if tokens are valid: true, expires at: 1739917881617
+[debug] [2025-02-18T21:34:16.108Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/spotifygenie-16a23 [none]
+[debug] [2025-02-18T21:34:16.769Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/spotifygenie-16a23 200
+[debug] [2025-02-18T21:34:16.770Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/spotifygenie-16a23 {"projectId":"spotifygenie-16a23","projectNumber":"216160892433","displayName":"SpotifyGenie","name":"projects/spotifygenie-16a23","resources":{"hostingSite":"spotifygenie-16a23"},"state":"ACTIVE","etag":"1_c7b3326c-2a3e-4c77-94cf-c10eef0f3862"}
+[info] 
+[info] Your public directory is the folder (relative to your project directory) that
+[info] will contain Hosting assets to be uploaded with firebase deploy. If you
+[info] have a build process for your assets, use your build's output directory.
+[info] 
+[info] ✔  Wrote public/404.html 
+[debug] [2025-02-18T21:35:43.332Z] >>> [apiv2][query] GET https://www.gstatic.com/firebasejs/releases.json [none]
+[debug] [2025-02-18T21:35:43.431Z] <<< [apiv2][status] GET https://www.gstatic.com/firebasejs/releases.json 200
+[debug] [2025-02-18T21:35:43.432Z] <<< [apiv2][body] GET https://www.gstatic.com/firebasejs/releases.json {"current":{"version":"11.3.1","browserURL":"https://www.gstatic.com/firebasejs/11.3.1/firebase.js","packageURL":"https://www.gstatic.com/firebasejs/11.3.1/firebase.tgz"},"live":{"version":"11.3","browserURL":"https://www.gstatic.com/firebasejs/live/11.3/firebase.js","packageURL":"https://www.gstatic.com/firebasejs/live/11.3/firebase.tgz"},"components":{"analytics":"https://www.gstatic.com/firebasejs/11.3.1/firebase-analytics.js","app":"https://www.gstatic.com/firebasejs/11.3.1/firebase-app.js","app-check":"https://www.gstatic.com/firebasejs/11.3.1/firebase-app-check.js","auth":"https://www.gstatic.com/firebasejs/11.3.1/firebase-auth.js","auth/cordova":"https://www.gstatic.com/firebasejs/11.3.1/firebase-auth/cordova.js","auth/web-extension":"https://www.gstatic.com/firebasejs/11.3.1/firebase-auth/web-extension.js","functions":"https://www.gstatic.com/firebasejs/11.3.1/firebase-functions.js","firestore":"https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.js","firestore/lite":"https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore/lite.js","installations":"https://www.gstatic.com/firebasejs/11.3.1/firebase-installations.js","storage":"https://www.gstatic.com/firebasejs/11.3.1/firebase-storage.js","performance":"https://www.gstatic.com/firebasejs/11.3.1/firebase-performance.js","remote-config":"https://www.gstatic.com/firebasejs/11.3.1/firebase-remote-config.js","messaging":"https://www.gstatic.com/firebasejs/11.3.1/firebase-messaging.js","messaging/sw":"https://www.gstatic.com/firebasejs/11.3.1/firebase-messaging/sw.js","database":"https://www.gstatic.com/firebasejs/11.3.1/firebase-database.js","vertexai":"https://www.gstatic.com/firebasejs/11.3.1/firebase-vertexai.js","data-connect":"https://www.gstatic.com/firebasejs/11.3.1/firebase-data-connect.js","firestore.memory":"https://www.gstatic.com/firebasejs/11.3.1/firebase-firestore.memory.js"}}
+[info] i  Skipping write of public/index.html 
+[info] 
+[info] i  Didn't detect a .git folder. Assuming /mnt/c/Users/drewe/OneDrive - Gonzaga University/Project Lab/SpotifyNewAuthorization is the project root. 
+[info] i  Authorizing with GitHub to upload your service account to a GitHub repository's secrets store. 
+[info] 
+[info] Visit this URL on this device to log in:
+[info] https://github.com/login/oauth/authorize?client_id=89cf50f02ac6aaed3484&state=961255488&redirect_uri=http%3A%2F%2Flocalhost%3A9005&scope=read%3Auser%20repo%20public_repo
+[info] 
+[info] Waiting for authentication...
+[debug] [2025-02-18T21:36:51.420Z] >>> [apiv2][query] POST https://github.com/login/oauth/access_token [none]
+[debug] [2025-02-18T21:36:51.420Z] >>> [apiv2][body] POST https://github.com/login/oauth/access_token [stream]
+[debug] [2025-02-18T21:36:51.694Z] <<< [apiv2][status] POST https://github.com/login/oauth/access_token 200
+[debug] [2025-02-18T21:36:51.694Z] <<< [apiv2][body] POST https://github.com/login/oauth/access_token {"access_token":"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","token_type":"bearer","scope":"read:user,repo"}
+[debug] [2025-02-18T21:36:51.699Z] >>> [apiv2][query] GET https://api.github.com/user [none]
+[debug] [2025-02-18T21:36:51.993Z] <<< [apiv2][status] GET https://api.github.com/user 200
+[debug] [2025-02-18T21:36:51.993Z] <<< [apiv2][body] GET https://api.github.com/user {"login":"drew-fitz","id":123685368,"node_id":"U_kgDOB19J-A","avatar_url":"https://avatars.githubusercontent.com/u/123685368?v=4","gravatar_id":"","url":"https://api.github.com/users/drew-fitz","html_url":"https://github.com/drew-fitz","followers_url":"https://api.github.com/users/drew-fitz/followers","following_url":"https://api.github.com/users/drew-fitz/following{/other_user}","gists_url":"https://api.github.com/users/drew-fitz/gists{/gist_id}","starred_url":"https://api.github.com/users/drew-fitz/starred{/owner}{/repo}","subscriptions_url":"https://api.github.com/users/drew-fitz/subscriptions","organizations_url":"https://api.github.com/users/drew-fitz/orgs","repos_url":"https://api.github.com/users/drew-fitz/repos","events_url":"https://api.github.com/users/drew-fitz/events{/privacy}","received_events_url":"https://api.github.com/users/drew-fitz/received_events","type":"User","user_view_type":"private","site_admin":false,"name":null,"company":null,"blog":"","location":null,"email":null,"hireable":null,"bio":null,"twitter_username":null,"notification_email":null,"public_repos":3,"public_gists":0,"followers":0,"following":0,"created_at":"2023-01-26T20:56:59Z","updated_at":"2025-01-17T18:26:11Z","private_gists":0,"total_private_repos":1,"owned_private_repos":1,"disk_usage":506,"collaborators":5,"two_factor_authentication":false,"plan":{"name":"free","space":976562499,"collaborators":0,"private_repos":10000}}
+[info] 
+[info] ✔  Success! Logged into GitHub as drew-fitz 
+[info] 
