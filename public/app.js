@@ -8,7 +8,7 @@
  */
 
 const clientId = '1346cfb41cc748ccbf22394985a55d3e'; // your clientId
-const redirectUrl = 'http://localhost:8080';        // your redirect URL - must be localhost URL and/or HTTPS
+const redirectUrl = 'https://spotifygenie-16a23.web.app/';        // your redirect URL - must be localhost URL and/or HTTPS
 
 const authorizationEndpoint = "https://accounts.spotify.com/authorize";
 const tokenEndpoint = "https://accounts.spotify.com/api/token";
