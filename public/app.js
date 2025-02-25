@@ -1,7 +1,6 @@
 /**
  * Spotify Genie - Debugging Version
  */
-alert("App.js is loaded!");
 
 // Keep existing authentication code
 const clientId = 'fb6eea506c354ff292e0898ffa737638';

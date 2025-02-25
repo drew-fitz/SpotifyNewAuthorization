@@ -119,8 +119,23 @@
     <button onclick="logoutClick()">Log out</button>
   </template>
 
-
-
+  <template id="oauth-template">
+    <h2>oAuth info</h2>
+    <table>
+      <tr>
+        <td>Access token</td>
+        <td data-bind="access_token"></td>
+      </tr>
+      <tr>
+        <td>Refresh token</td>
+        <td data-bind="refresh_token"></td>
+      </tr>
+      <tr>
+        <td>Expiration at</td>
+        <td data-bind="expires">${getExpirationDate(expires_in)}</td>
+      </tr>
+    </table>
+  </template>
 
   <template id="search-form-template">
     <div class="search-container">
