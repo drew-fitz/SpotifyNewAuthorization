@@ -1,21 +1,100 @@
-
 <!DOCTYPE html>
 <html>
-
 <head>
   <title>Spotify Genie</title>
-  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Basic styling */
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #121212;
+      color: #ffffff;
+    }
+   
+    h1, h2, h3, h4 {
+      color: #1DB954; /* Spotify green */
+    }
+   
+    button {
+      background-color: #1DB954;
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 30px;
+      cursor: pointer;
+      margin: 5px;
+    }
+   
+    .component-container {
+      background-color: #282828;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+   
+    table {
+      width: 100%;
+    }
+   
+    td {
+      padding: 8px;
+      border-bottom: 1px solid #333;
+    }
+   
+    .track-item {
+      display: flex;
+      padding: 10px;
+      margin-bottom: 10px;
+      background-color: #333;
+      border-radius: 4px;
+    }
+   
+    .track-info {
+      flex: 1;
+    }
+   
+    .track-name {
+      font-weight: bold;
+    }
+   
+    .track-artist {
+      color: #aaa;
+    }
+   
+    .album-cover {
+      width: 50px;
+      height: 50px;
+      border-radius: 4px;
+      margin-left: 10px;
+    }
+   
+    .error-message {
+      color: #ff5555;
+      padding: 10px;
+      background-color: rgba(255, 0, 0, 0.1);
+      border-radius: 4px;
+    }
+  </style>
 </head>
-
 <body>
+  <!-- Core containers -->
+  <div id="main" class="component-container"></div>
+  <div id="oauth" class="component-container"></div>
+ 
+  <!-- New feature containers -->
+  <div id="search-form-container" class="component-container"></div>
+  <div id="playlist-generator-container" class="component-container"></div>
+  <div id="tracks-container" class="component-container"></div>
 
-  <div id="main"></div>
-  <div id="oauth"></div>
 
+  <!-- Templates -->
   <template id="login">
     <h1>Spotify Genie</h1>
-    <button id="login-button" data-bind-onclick="loginWithSpotifyClick();"> Log in with Spotify </button>
+    <p>Welcome to Spotify Genie. Connect your Spotify account to get started.</p>
+    <button onclick="loginWithSpotifyClick()">Log in with Spotify</button>
   </template>
+
 
   <template id="logged-in-template">
     <h1>Logged in as <span data-bind="display_name"></span></h1>
@@ -26,60 +105,129 @@
         <td data-bind="display_name"></td>
       </tr>
       <tr>
-        <td>Id</td>
-        <td data-bind="id"></td>
-      </tr>
-      <tr>
         <td>Email</td>
         <td data-bind="email"></td>
       </tr>
       <tr>
         <td>Spotify URI</td>
-        <td>
-          <a data-bind="external_urls.spotify" data-bind-href="external_urls.spotify"></a>
-        </td>
-      </tr>
-      <tr>
-        <td>Link </dt>
-        <td>
-          <a data-bind="href" data-bind-href="href"></a>
-        </td>
-      </tr>
-      <tr>
-        <td>Profile Image</td>
-        <td>
-          <a data-bind-href="images[0].url" data-bind="images[0].url"></a>
-        </td>
-      </tr>
-      <tr>
-        <td>Country</td>
-        <td data-bind="country"></td>
+        <td><a data-bind="external_urls.spotify" data-bind-href="external_urls.spotify"></a></td>
       </tr>
     </table>
 
-    <button id="refresh-token-button" data-bind-onclick="refreshTokenClick();">Refresh Token</button>
-    <button id="logout-button" data-bind-onclick="logoutClick();">Log out</button>
+
+    <button onclick="refreshTokenClick()">Refresh Token</button>
+    <button onclick="logoutClick()">Log out</button>
   </template>
 
-  <template id="oauth-template">
-    <h2>oAuth info</h2>
-    <table>
-      <tr>
-        <td>Access token</td>
-        <td data-bind="access_token"></td>
-      </tr>
-      <tr>
-        <td>Refresh token</td>
-        <td data-bind="refresh_token"></td>
-      </tr>
-      <tr>
-        <td>Expiration at</td>
-        <td data-bind="expires">${getExpirationDate(expires_in)}</td>
-      </tr>
-    </table>
+
+
+
+  <template id="search-form-template">
+    <div class="search-container">
+      <h3>Search for Tracks</h3>
+      <form id="search-form" onsubmit="handleSearch(event)">
+        <input type="text" id="search-input" placeholder="Search for tracks or artists..." required>
+        <button type="submit">Search</button>
+      </form>
+      <div id="search-results"></div>
+    </div>
   </template>
 
-  <script src="app.js" type="module"></script>
+
+  <template id="search-results-template">
+    <div class="results-container">
+      <h4>Search Results</h4>
+      <div class="track-list">
+        <div data-bind="if searchResults && searchResults.length > 0">
+          <div data-bind="searchResults.map(track => `
+            <div class='track-item'>
+              <div class='track-info'>
+                <div class='track-name'>${track.name}</div>
+                <div class='track-artist'>${track.artist}</div>
+              </div>
+              ${track.albumCover ? `<img src='${track.albumCover}' alt='Album cover' class='album-cover'>` : ''}
+            </div>
+          `).join('')"></div>
+        </div>
+        <div data-bind="if !searchResults || searchResults.length === 0">
+          <p>No results found. Try a different search term.</p>
+        </div>
+      </div>
+    </div>
+  </template>
+
+
+  <template id="playlist-generator-template">
+    <div class="playlist-generator">
+      <h3>Generate a Playlist</h3>
+      <form id="playlist-form" onsubmit="handleGeneratePlaylist(event)">
+        <div class="playlist-types">
+          <div class="playlist-type">
+            <input type="radio" id="mood" name="playlist-type" value="mood" checked>
+            <label for="mood">Mood-based</label>
+          </div>
+          <div class="playlist-type">
+            <input type="radio" id="genre" name="playlist-type" value="genre">
+            <label for="genre">Genre-based</label>
+          </div>
+          <div class="playlist-type">
+            <input type="radio" id="throwback" name="playlist-type" value="throwback">
+            <label for="throwback">Throwback</label>
+          </div>
+        </div>
+        <button type="submit">Generate Playlist</button>
+      </form>
+      <div id="playlist-results"></div>
+    </div>
+  </template>
+
+
+  <template id="playlist-results-template">
+    <div class="playlist-results">
+      <h4 data-bind="'Your ' + playlistType.charAt(0).toUpperCase() + playlistType.slice(1) + ' Playlist'"></h4>
+      <div class="track-list">
+        <div data-bind="if playlistTracks && playlistTracks.length > 0">
+          <div data-bind="playlistTracks.map(track => `
+            <div class='track-item'>
+              <div class='track-info'>
+                <div class='track-name'>${track.name}</div>
+                <div class='track-artist'>${track.artist}</div>
+              </div>
+              ${track.albumCover ? `<img src='${track.albumCover}' alt='Album cover' class='album-cover'>` : ''}
+            </div>
+          `).join('')"></div>
+        </div>
+        <div data-bind="if !playlistTracks || playlistTracks.length === 0">
+          <p>No tracks found for this playlist type. Try another option.</p>
+        </div>
+      </div>
+    </div>
+  </template>
+
+
+  <template id="tracks-template">
+    <div class="saved-tracks">
+      <h3>Your Saved Tracks</h3>
+      <div class="track-list">
+        <div data-bind="if tracks && tracks.length > 0">
+          <div data-bind="tracks.map(track => `
+            <div class='track-item'>
+              <div class='track-info'>
+                <div class='track-name'>${track.name}</div>
+                <div class='track-artist'>${track.artist}</div>
+              </div>
+              ${track.albumCover ? `<img src='${track.albumCover}' alt='Album cover' class='album-cover'>` : ''}
+            </div>
+          `).join('')"></div>
+        </div>
+        <div data-bind="if !tracks || tracks.length === 0">
+          <p>You don't have any saved tracks yet.</p>
+        </div>
+      </div>
+    </div>
+  </template>
+
+
+  <script src="app.js"></script>
 </body>
-
 </html>
