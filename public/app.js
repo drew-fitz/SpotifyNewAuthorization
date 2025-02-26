@@ -285,50 +285,145 @@ async function searchSpotify(query, type = 'track', limit = 10) {
 }
 
 
+// Fixed Spotify API implementation with direct recommendations
+// Alternative playlist generator that uses saved tracks and top tracks
 async function generatePlaylistByType(playlistType) {
-  let seedTracks = ['0c6xIDDpzE81m2q797ordT']; // Default track ID
-  let seedGenres = [];
-
-
-  // Build recommendation URL
-  let url = 'https://api.spotify.com/v1/recommendations?limit=10';
- 
-  // Simple playlist generation - using default seeds for now
-  if (playlistType === 'genre') {
-    seedGenres = ['rock', 'pop'];
-  } else if (playlistType === 'throwback') {
-    seedGenres = ['80s', '90s'];
+  console.log(`Starting alternative generation of ${playlistType} playlist`);
+  
+  try {
+    // First, get all the user's saved tracks
+    const savedTracksResponse = await fetch('https://api.spotify.com/v1/me/tracks?limit=50', {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+    });
+    
+    if (!savedTracksResponse.ok) {
+      throw new Error(`Failed to fetch saved tracks: ${savedTracksResponse.status}`);
+    }
+    
+    const savedTracksData = await savedTracksResponse.json();
+    
+    if (!savedTracksData.items || savedTracksData.items.length === 0) {
+      // Try to get user's top tracks if no saved tracks
+      const topTracksResponse = await fetch('https://api.spotify.com/v1/me/top/tracks?limit=50', {
+        method: 'GET',
+        headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+      });
+      
+      if (!topTracksResponse.ok) {
+        throw new Error("You don't have any saved tracks or top tracks to generate a playlist from.");
+      }
+      
+      const topTracksData = await topTracksResponse.json();
+      
+      if (!topTracksData.items || topTracksData.items.length === 0) {
+        throw new Error("No tracks available to generate a playlist.");
+      }
+      
+      // Use top tracks
+      return processTracksForPlaylist(topTracksData.items, playlistType);
+    }
+    
+    // Use saved tracks
+    return processTracksForPlaylist(savedTracksData.items, playlistType);
+    
+  } catch (error) {
+    console.error("Error in alternative playlist generator:", error);
+    throw error;
   }
- 
-  if (seedTracks.length > 0) {
-    url += `&seed_tracks=${seedTracks.join(',')}`;
-  }
- 
-  if (seedGenres.length > 0) {
-    url += `&seed_genres=${seedGenres.join(',')}`;
-  }
+}
 
-
-  console.log(`Getting recommendations with URL: ${url}`);
-
-
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+// Helper function to process tracks based on playlist type
+function processTracksForPlaylist(trackItems, playlistType) {
+  console.log(`Processing ${trackItems.length} tracks for ${playlistType} playlist`);
+  
+  // Map tracks to a common format with audio features
+  const tracks = trackItems.map(item => {
+    // Handle both saved tracks format and top tracks format
+    const track = item.track || item;
+    return {
+      name: track.name,
+      artist: track.artists.map(a => a.name).join(', '),
+      id: track.id,
+      albumCover: track.album && track.album.images && track.album.images.length > 0 
+        ? track.album.images[0].url 
+        : '',
+      popularity: track.popularity || 50,
+      // We don't have audio features, but we'll use other properties
+      album: track.album ? {
+        name: track.album.name,
+        release_date: track.album.release_date || '2020'
+      } : null
+    };
   });
-
-
-  const data = await response.json();
-  if (data.error) {
-    throw new Error(`Recommendation error: ${data.error.message || 'Unknown error'}`);
+  
+  // Filter and sort based on playlist type
+  let selectedTracks = [];
+  
+  if (playlistType === 'mood') {
+    // For mood, prioritize popular tracks (happy mood)
+    selectedTracks = tracks
+      .sort((a, b) => b.popularity - a.popularity)
+      .slice(0, 10);
+    
+  } else if (playlistType === 'genre') {
+    // For genre, try to get a mix of artists
+    // Group by artist first
+    const artistGroups = {};
+    tracks.forEach(track => {
+      const mainArtist = track.artist.split(',')[0].trim();
+      if (!artistGroups[mainArtist]) {
+        artistGroups[mainArtist] = [];
+      }
+      artistGroups[mainArtist].push(track);
+    });
+    
+    // Take one track from each artist until we have 10
+    const artists = Object.keys(artistGroups);
+    for (let i = 0; i < artists.length && selectedTracks.length < 10; i++) {
+      if (artistGroups[artists[i]].length > 0) {
+        selectedTracks.push(artistGroups[artists[i]][0]);
+      }
+    }
+    
+    // If we still need more tracks, add remaining popular ones
+    if (selectedTracks.length < 10) {
+      const remainingTracks = tracks
+        .filter(track => !selectedTracks.includes(track))
+        .sort((a, b) => b.popularity - a.popularity);
+      
+      selectedTracks = selectedTracks.concat(
+        remainingTracks.slice(0, 10 - selectedTracks.length)
+      );
+    }
+    
+  } else if (playlistType === 'throwback') {
+    // For throwback, prioritize older releases if we have release dates
+    selectedTracks = tracks
+      .sort((a, b) => {
+        // If we have release dates, sort by those
+        if (a.album && b.album && a.album.release_date && b.album.release_date) {
+          return a.album.release_date.localeCompare(b.album.release_date);
+        }
+        // Default to random for mix
+        return Math.random() - 0.5;
+      })
+      .slice(0, 10);
   }
- 
-  return data.tracks.map(track => ({
-    name: track.name,
-    artist: track.artists[0].name,
-    id: track.id,
-    albumCover: track.album.images[0]?.url || ''
-  }));
+  
+  // Ensure we have tracks
+  if (selectedTracks.length === 0) {
+    // Just take a random selection
+    selectedTracks = tracks
+      .sort(() => Math.random() - 0.5)
+      .slice(0, Math.min(10, tracks.length));
+  }
+  
+  // Ensure we don't exceed 10 tracks
+  selectedTracks = selectedTracks.slice(0, 10);
+  
+  console.log(`Generated playlist with ${selectedTracks.length} tracks`);
+  return selectedTracks;
 }
 
 
@@ -355,7 +450,6 @@ async function refreshTokenClick() {
     alert("Error refreshing token: " + error.message);
   }
 }
-
 
 async function handleSearch(event) {
   event.preventDefault();

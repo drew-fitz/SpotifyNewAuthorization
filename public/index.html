@@ -148,7 +148,6 @@
     </div>
   </template>
 
-
   <template id="search-results-template">
     <div class="results-container">
       <h4>Search Results</h4>
@@ -181,15 +180,6 @@
             <input type="radio" id="mood" name="playlist-type" value="mood" checked>
             <label for="mood">Mood-based</label>
           </div>
-          <div class="playlist-type">
-            <input type="radio" id="genre" name="playlist-type" value="genre">
-            <label for="genre">Genre-based</label>
-          </div>
-          <div class="playlist-type">
-            <input type="radio" id="throwback" name="playlist-type" value="throwback">
-            <label for="throwback">Throwback</label>
-          </div>
-        </div>
         <button type="submit">Generate Playlist</button>
       </form>
       <div id="playlist-results"></div>
@@ -211,6 +201,11 @@
               ${track.albumCover ? `<img src='${track.albumCover}' alt='Album cover' class='album-cover'>` : ''}
             </div>
           `).join('')"></div>
+          
+          <!-- Add Save to Spotify button -->
+          <div class="playlist-actions">
+            <button class="save-spotify-btn" onclick="saveToSpotify()">Save to Spotify</button>
+          </div>
         </div>
         <div data-bind="if !playlistTracks || playlistTracks.length === 0">
           <p>No tracks found for this playlist type. Try another option.</p>
