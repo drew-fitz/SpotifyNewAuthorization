@@ -330,6 +330,160 @@ async function generatePlaylistByType(playlistType) {
   }
 }
 
+// Function to get a readable name from playlist type
+function getPlaylistDisplayName(type) {
+  const typeMap = {
+    'mood': 'Happy',
+    'mood-happy': 'Happy',
+    'mood-sad': 'Sad',
+    'mood-chill': 'Chill',
+    'mood-hype': 'Hype',
+    'throwback': 'Throwback',
+    'past-favorites': 'Past Favorites',
+    'new-releases': 'New Releases',
+    'genre-explorer': 'Genre Explorer'
+  };
+  
+  return typeMap[type] || type.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// Function to handle the "Save to Spotify" button click
+async function handleSaveToSpotify() {
+  if (!lastGeneratedPlaylist || !lastGeneratedPlaylist.tracks || lastGeneratedPlaylist.tracks.length === 0) {
+    alert("Please generate a playlist first before saving to Spotify.");
+    return;
+  }
+  
+  try {
+    // Show loading indicator
+    const saveButton = document.querySelector('.save-spotify-btn');
+    if (saveButton) {
+      saveButton.textContent = "Saving...";
+      saveButton.disabled = true;
+    }
+    
+    // Format playlist name based on type
+    const displayName = getPlaylistDisplayName(lastGeneratedPlaylist.type);
+    const playlistName = `${displayName} Playlist by Spotify Genie`;
+    
+    // Format track URIs - we need to convert IDs to full Spotify URIs
+    const trackUris = lastGeneratedPlaylist.tracks.map(track => `spotify:track:${track.id}`);
+    
+    // Save the playlist
+    const result = await savePlaylistToSpotify(playlistName, trackUris);
+    
+    // Update UI based on result
+    if (result.success) {
+      // Create success message with link
+      const playlistResultsDiv = document.getElementById('playlist-results');
+      const successMessage = document.createElement('div');
+      successMessage.className = 'success-message';
+      successMessage.innerHTML = `
+        <p>Playlist "${result.playlistName}" saved successfully!</p>
+        <a href="${result.playlistUrl}" target="_blank" class="spotify-button">
+          <i class="fab fa-spotify"></i> Open in Spotify
+        </a>
+      `;
+      
+      // Insert after the track list
+      const trackList = playlistResultsDiv.querySelector('.track-list');
+      if (trackList) {
+        trackList.after(successMessage);
+      } else {
+        playlistResultsDiv.appendChild(successMessage);
+      }
+      
+      // Update button
+      if (saveButton) {
+        saveButton.textContent = "Saved to Spotify ✓";
+        saveButton.disabled = true;
+      }
+    } else {
+      // Show error
+      alert(`Failed to save playlist: ${result.error}`);
+      
+      // Reset button
+      if (saveButton) {
+        saveButton.textContent = "Save to Spotify";
+        saveButton.disabled = false;
+      }
+    }
+  } catch (error) {
+    console.error("Error in handleSaveToSpotify:", error);
+    alert(`Error saving playlist: ${error.message}`);
+    
+    // Reset button
+    const saveButton = document.querySelector('.save-spotify-btn');
+    if (saveButton) {
+      saveButton.textContent = "Save to Spotify";
+      saveButton.disabled = false;
+    }
+  }
+}
+
+// Update the playlist generation function to store the last playlist
+async function handleGeneratePlaylist(event) {
+  event.preventDefault();
+  const selectedType = document.querySelector('input[name="playlist-type"]:checked');
+ 
+  if (!selectedType) {
+    console.error("No playlist type selected");
+    return;
+  }
+ 
+  const playlistType = selectedType.value;
+  console.log(`Generating playlist of type: ${playlistType}`);
+ 
+  try {
+    // Show loading indicator
+    const submitButton = document.querySelector('#playlist-form button[type="submit"]');
+    if (submitButton) {
+      submitButton.textContent = "Generating...";
+      submitButton.disabled = true;
+    }
+    
+    // For demo purposes, we'll use the same generation method for all types
+    // In a real implementation, we would customize the generation based on the type
+    const baseType = playlistType.split('-')[0];
+    
+    // Run the playlist generation - fallback to 'mood' for all new types as specified
+    const playlistTracks = await generatePlaylistByType(baseType === 'mood' ? 'mood' : 
+                                                      (baseType === 'past' ? 'throwback' : 'mood'));
+    
+    console.log(`Generated playlist with ${playlistTracks.length} tracks`);
+    
+    // Store the generated playlist
+    lastGeneratedPlaylist = {
+      type: playlistType,
+      tracks: playlistTracks,
+      generatedAt: new Date()
+    };
+    
+    // Render the playlist to the UI
+    renderTemplate("playlist-results", "playlist-results-template", {
+      playlistTracks,
+      playlistType
+    });
+    
+    // Reset button
+    if (submitButton) {
+      submitButton.textContent = "Generate Playlist";
+      submitButton.disabled = false;
+    }
+  } catch (error) {
+    console.error("Error generating playlist:", error);
+    document.getElementById("playlist-results").innerHTML =
+      `<div class="error-message">Error generating playlist: ${error.message}</div>`;
+      
+    // Reset button
+    const submitButton = document.querySelector('#playlist-form button[type="submit"]');
+    if (submitButton) {
+      submitButton.textContent = "Generate Playlist";
+      submitButton.disabled = false;
+    }
+  }
+}
+
 // Helper function to process tracks based on playlist type
 function processTracksForPlaylist(trackItems, playlistType) {
   console.log(`Processing ${trackItems.length} tracks for ${playlistType} playlist`);

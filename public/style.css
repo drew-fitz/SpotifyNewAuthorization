@@ -284,4 +284,63 @@ body {
   margin-right: 8px;
 }
 
+.playlist-options {
+  margin-bottom: 20px;
+}
+
+.playlist-category {
+  margin-bottom: 15px;
+}
+
+.playlist-category h5 {
+  margin-bottom: 8px;
+  color: #1DB954;
+  font-size: 1.1em;
+}
+
+.playlist-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.playlist-type {
+  display: flex;
+  align-items: center;
+  background-color: #333;
+  padding: 8px 12px;
+  border-radius: 30px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.playlist-type:hover {
+  background-color: #444;
+}
+
+.playlist-type input[type="radio"] {
+  margin-right: 6px;
+}
+
+.success-message {
+  color: #1DB954;
+  padding: 15px;
+  background-color: rgba(29, 185, 84, 0.1);
+  border-radius: 4px;
+  margin-top: 15px;
+  text-align: center;
+}
+
+.spotify-button {
+  display: inline-block;
+  background-color: #1DB954;
+  color: white;
+  text-decoration: none;
+  padding: 10px 15px;
+  border-radius: 30px;
+  margin-top: 10px;
+  font-weight: bold;
+}
+
   }

@@ -176,11 +176,63 @@
     <div class="playlist-generator">
       <h3>Generate a Playlist</h3>
       <form id="playlist-form" onsubmit="handleGeneratePlaylist(event)">
-        <div class="playlist-types">
-          <div class="playlist-type">
-            <input type="radio" id="mood" name="playlist-type" value="mood" checked>
-            <label for="mood">Mood-based</label>
+        <div class="playlist-options">
+          <h4>Playlist Type</h4>
+          
+          <!-- Mood-based options -->
+          <div class="playlist-category">
+            <h5>Mood</h5>
+            <div class="playlist-types">
+              <div class="playlist-type">
+                <input type="radio" id="mood-happy" name="playlist-type" value="mood-happy">
+                <label for="mood-happy">Happy</label>
+              </div>
+              <div class="playlist-type">
+                <input type="radio" id="mood-sad" name="playlist-type" value="mood-sad">
+                <label for="mood-sad">Sad</label>
+              </div>
+              <div class="playlist-type">
+                <input type="radio" id="mood-chill" name="playlist-type" value="mood-chill">
+                <label for="mood-chill">Chill</label>
+              </div>
+              <div class="playlist-type">
+                <input type="radio" id="mood-hype" name="playlist-type" value="mood-hype">
+                <label for="mood-hype">Hype</label>
+              </div>
+            </div>
           </div>
+          
+          <!-- Temporal options -->
+          <div class="playlist-category">
+            <h5>Songs you Love</h5>
+            <div class="playlist-types">
+              <div class="playlist-type">
+                <input type="radio" id="throwback" name="playlist-type" value="throwback">
+                <label for="throwback">Current Favorites</label>
+              </div>
+              <div class="playlist-type">
+                <input type="radio" id="past-favorites" name="playlist-type" value="past-favorites">
+                <label for="past-favorites">Past Favorites</label>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Discovery options -->
+          <div class="playlist-category">
+            <h5>Discovery</h5>
+            <div class="playlist-types">
+              <div class="playlist-type">
+                <input type="radio" id="new-releases" name="playlist-type" value="new-releases">
+                <label for="new-releases">New Releases</label>
+              </div>
+              <div class="playlist-type">
+                <input type="radio" id="genre-explorer" name="playlist-type" value="genre-explorer">
+                <label for="genre-explorer">Surprise Genre</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        
         <button type="submit">Generate Playlist</button>
       </form>
       <div id="playlist-results"></div>
@@ -190,7 +242,7 @@
 
   <template id="playlist-results-template">
     <div class="playlist-results">
-      <h4 data-bind="'Your ' + playlistType.charAt(0).toUpperCase() + playlistType.slice(1) + ' Playlist'"></h4>
+      <h4 data-bind="'Your ' + (playlistType ? playlistType.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Custom') + ' Playlist'"></h4>
       <div class="track-list">
         <div data-bind="if playlistTracks && playlistTracks.length > 0">
           <div data-bind="playlistTracks.map(track => `
@@ -209,7 +261,7 @@
           </div>
         </div>
         <div data-bind="if !playlistTracks || playlistTracks.length === 0">
-          <p></p>
+          <p> </p>
         </div>
       </div>
     </div>
@@ -232,7 +284,7 @@
           `).join('')"></div>
         </div>
         <div data-bind="if !tracks || tracks.length === 0">
-          <p>You don't have any saved tracks yet.</p>
+          <p> </p>
         </div>
       </div>
     </div>
