@@ -144,7 +144,7 @@ async function getUserData() {
 
 //send the token to backend
 async function sendTokenToBackend(accessToken) {
-  await fetch("http://your-backend.com/api/save-token", {
+  await fetch("http://127.0.0.1:5000/api/save-token", { //this needs to be changed
       method: "POST",
       headers: {
           "Content-Type": "application/json",
