@@ -42,6 +42,9 @@ if (code) {
   const token = await getToken(code);
   currentToken.save(token);
 
+  //send access token to backend
+  await sendTokenToBackend(token.access_token);
+
   // Remove code from URL so we can refresh correctly.
   const url = new URL(window.location.href);
   url.searchParams.delete("code");
@@ -53,6 +56,7 @@ if (code) {
 // If we have a token, we're logged in, so fetch user data and render logged in template
 if (currentToken.access_token) {
   const userData = await getUserData();
+  // const userData = await getUserDataFromBackend();
   renderTemplate("main", "logged-in-template", userData);
   renderTemplate("oauth", "oauth-template", currentToken);
 }
@@ -92,7 +96,7 @@ async function redirectToSpotifyAuthorize() {
   window.location.href = authUrl.toString(); // Redirect the user to the authorization server for login
 }
 
-// Soptify API Calls
+// Spotify API Calls
 async function getToken(code) {
   const code_verifier = localStorage.getItem('code_verifier');
 
@@ -134,8 +138,19 @@ async function getUserData() {
     method: 'GET',
     headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
   });
-
+  
   return await response.json();
+}
+
+//send the token to backend
+async function sendTokenToBackend(accessToken) {
+  await fetch("http://your-backend.com/api/save-token", {
+      method: "POST",
+      headers: {
+          "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ accessToken })
+  });
 }
 
 // Click handlers
