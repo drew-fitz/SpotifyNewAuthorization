@@ -281,53 +281,449 @@ async function searchSpotify(query, type = 'track', limit = 10) {
   }));
 }
 
-
-// Fixed Spotify API implementation with direct recommendations
-// Alternative playlist generator that uses saved tracks and top tracks
+// Enhanced generatePlaylistByType function
 async function generatePlaylistByType(playlistType) {
-  console.log(`Starting alternative generation of ${playlistType} playlist`);
+  console.log(`Starting generation of ${playlistType} playlist`);
   
   try {
-    // First, get all the user's saved tracks
-    const savedTracksResponse = await fetch('https://api.spotify.com/v1/me/tracks?limit=50', {
-      method: 'GET',
-      headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
-    });
-    
-    if (!savedTracksResponse.ok) {
-      throw new Error(`Failed to fetch saved tracks: ${savedTracksResponse.status}`);
+    // First, get required data based on playlist type
+    if (playlistType === 'new-releases') {
+      // For new releases, use the new releases API
+      return await getNewReleases();
     }
     
-    const savedTracksData = await savedTracksResponse.json();
+    // Get audio features for saved/top tracks depending on playlist type
+    let tracksWithFeatures;
     
-    if (!savedTracksData.items || savedTracksData.items.length === 0) {
-      // Try to get user's top tracks if no saved tracks
-      const topTracksResponse = await fetch('https://api.spotify.com/v1/me/top/tracks?limit=50', {
+    // For throwback and past-favorites, we need user's saved tracks
+    if (playlistType === 'throwback' || playlistType === 'past-favorites') {
+      tracksWithFeatures = await getSavedTracksWithFeatures();
+    } else {
+      // For other playlist types, try saved tracks first, then fall back to top tracks
+      try {
+        tracksWithFeatures = await getSavedTracksWithFeatures();
+        if (!tracksWithFeatures || tracksWithFeatures.length === 0) {
+          throw new Error("No saved tracks");
+        }
+      } catch (error) {
+        console.log("Falling back to top tracks");
+        tracksWithFeatures = await getTopTracksWithFeatures();
+      }
+    }
+    
+    // If we still don't have tracks, throw an error
+    if (!tracksWithFeatures || tracksWithFeatures.length === 0) {
+      throw new Error("No tracks available to generate a playlist.");
+    }
+    
+    // Process tracks based on playlist type
+    return processTracksForPlaylist(tracksWithFeatures, playlistType);
+    
+  } catch (error) {
+    console.error("Error in playlist generator:", error);
+    throw error;
+  }
+}
+
+// Get saved tracks with audio features
+async function getSavedTracksWithFeatures() {
+  console.log("Fetching saved tracks with audio features");
+  
+  // Step 1: Get saved tracks
+  const savedTracksResponse = await fetch('https://api.spotify.com/v1/me/tracks?limit=50', {
+    method: 'GET',
+    headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+  });
+  
+  if (!savedTracksResponse.ok) {
+    throw new Error(`Failed to fetch saved tracks: ${savedTracksResponse.status}`);
+  }
+  
+  const savedTracksData = await savedTracksResponse.json();
+  
+  if (!savedTracksData.items || savedTracksData.items.length === 0) {
+    return [];
+  }
+  
+  // Step 2: Get track IDs and prepare for audio features request
+  const trackIds = savedTracksData.items.map(item => item.track.id);
+  
+  // Step 3: Get audio features in batches (Spotify API limit is 100 per request)
+  const tracksWithFeatures = await getAudioFeatures(trackIds, savedTracksData.items);
+  
+  return tracksWithFeatures;
+}
+
+// Get top tracks with audio features
+async function getTopTracksWithFeatures() {
+  console.log("Fetching top tracks with audio features");
+  
+  // Step 1: Get top tracks (medium_term = ~6 months)
+  const topTracksResponse = await fetch('https://api.spotify.com/v1/me/top/tracks?limit=50&time_range=medium_term', {
+    method: 'GET',
+    headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+  });
+  
+  if (!topTracksResponse.ok) {
+    throw new Error(`Failed to fetch top tracks: ${topTracksResponse.status}`);
+  }
+  
+  const topTracksData = await topTracksResponse.json();
+  
+  if (!topTracksData.items || topTracksData.items.length === 0) {
+    return [];
+  }
+  
+  // Step 2: Get track IDs and prepare for audio features request
+  const trackIds = topTracksData.items.map(item => item.id);
+  
+  // Step 3: Get audio features
+  const tracksWithFeatures = await getAudioFeatures(trackIds, topTracksData.items);
+  
+  return tracksWithFeatures;
+}
+
+// Get audio features for tracks
+async function getAudioFeatures(trackIds, trackItems) {
+  // Handle empty arrays
+  if (!trackIds || trackIds.length === 0) {
+    return [];
+  }
+  
+  console.log(`Getting audio features for ${trackIds.length} tracks`);
+  
+  // Spotify API can only handle 100 tracks per request
+  const batchSize = 100;
+  const batches = [];
+  
+  for (let i = 0; i < trackIds.length; i += batchSize) {
+    batches.push(trackIds.slice(i, i + batchSize));
+  }
+  
+  // Get audio features for each batch
+  const audioFeaturesBatches = await Promise.all(
+    batches.map(async batchIds => {
+      const response = await fetch(`https://api.spotify.com/v1/audio-features?ids=${batchIds.join(',')}`, {
         method: 'GET',
         headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
       });
       
-      if (!topTracksResponse.ok) {
-        throw new Error("You don't have any saved tracks or top tracks to generate a playlist from.");
+      if (!response.ok) {
+        throw new Error(`Failed to fetch audio features: ${response.status}`);
       }
       
-      const topTracksData = await topTracksResponse.json();
-      
-      if (!topTracksData.items || topTracksData.items.length === 0) {
-        throw new Error("No tracks available to generate a playlist.");
-      }
-      
-      // Use top tracks
-      return processTracksForPlaylist(topTracksData.items, playlistType);
+      return response.json();
+    })
+  );
+  
+  // Flatten audio features
+  const audioFeatures = audioFeaturesBatches
+    .flatMap(batch => batch.audio_features)
+    .filter(features => features !== null);
+  
+  // Map audio features to track objects
+  const featuresMap = {};
+  audioFeatures.forEach(features => {
+    if (features && features.id) {
+      featuresMap[features.id] = features;
     }
+  });
+  
+  // Combine track data with audio features
+  const tracksWithFeatures = trackItems.map(item => {
+    // Handle both saved tracks format and top tracks format
+    const track = item.track || item;
+    const id = track.id;
     
-    // Use saved tracks
-    return processTracksForPlaylist(savedTracksData.items, playlistType);
-    
-  } catch (error) {
-    console.error("Error in alternative playlist generator:", error);
-    throw error;
+    return {
+      name: track.name,
+      artist: track.artists.map(a => a.name).join(', '),
+      id: id,
+      albumCover: track.album && track.album.images && track.album.images.length > 0 
+        ? track.album.images[0].url 
+        : '',
+      popularity: track.popularity || 50,
+      album: track.album ? {
+        name: track.album.name,
+        release_date: track.album.release_date || '2020'
+      } : null,
+      // Add audio features
+      audioFeatures: featuresMap[id] || null
+    };
+  });
+  
+  return tracksWithFeatures;
+}
+
+// Get new releases
+async function getNewReleases() {
+  console.log("Fetching new releases");
+  
+  const newReleasesResponse = await fetch('https://api.spotify.com/v1/browse/new-releases?limit=50', {
+    method: 'GET',
+    headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+  });
+  
+  if (!newReleasesResponse.ok) {
+    throw new Error(`Failed to fetch new releases: ${newReleasesResponse.status}`);
   }
+  
+  const newReleasesData = await newReleasesResponse.json();
+  
+  if (!newReleasesData.albums || !newReleasesData.albums.items || newReleasesData.albums.items.length === 0) {
+    throw new Error("No new releases found.");
+  }
+  
+  // Now get tracks for these albums (first track from each album)
+  const albumIds = newReleasesData.albums.items.map(album => album.id);
+  
+  // Spotify API can only handle 20 albums per request
+  const batchSize = 20;
+  const albumBatches = [];
+  
+  for (let i = 0; i < albumIds.length; i += batchSize) {
+    albumBatches.push(albumIds.slice(i, i + batchSize));
+  }
+  
+  let newReleaseTracks = [];
+  
+  // Get tracks for each album batch
+  for (const batchIds of albumBatches) {
+    const albumsResponse = await Promise.all(
+      batchIds.map(albumId => 
+        fetch(`https://api.spotify.com/v1/albums/${albumId}/tracks?limit=1`, {
+          method: 'GET',
+          headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+        })
+      )
+    );
+    
+    const albumsData = await Promise.all(
+      albumsResponse.map(response => {
+        if (!response.ok) {
+          console.warn(`Failed to fetch album tracks: ${response.status}`);
+          return { items: [] };
+        }
+        return response.json();
+      })
+    );
+    
+    // Match album data with track data
+    const batchTracks = batchIds.map((albumId, index) => {
+      const album = newReleasesData.albums.items.find(a => a.id === albumId);
+      const albumTracks = albumsData[index].items;
+      
+      if (!album || !albumTracks || albumTracks.length === 0) {
+        return null;
+      }
+      
+      const track = albumTracks[0];
+      
+      return {
+        name: track.name,
+        artist: track.artists.map(a => a.name).join(', '),
+        id: track.id,
+        albumCover: album.images && album.images.length > 0 ? album.images[0].url : '',
+        popularity: album.popularity || 50,
+        album: {
+          name: album.name,
+          release_date: album.release_date || '2023'
+        }
+      };
+    }).filter(track => track !== null);
+    
+    newReleaseTracks = newReleaseTracks.concat(batchTracks);
+  }
+  
+  // Limit to top 10 tracks
+  return newReleaseTracks.slice(0, 10);
+}
+
+// Enhanced processTracksForPlaylist to handle all playlist types
+function processTracksForPlaylist(tracks, playlistType) {
+  console.log(`Processing ${tracks.length} tracks for ${playlistType} playlist`);
+  
+  // Handle different playlist types
+  switch (playlistType) {
+    case 'mood-happy':
+      return getMoodPlaylist(tracks, 'happy');
+    
+    case 'mood-sad':
+      return getMoodPlaylist(tracks, 'sad');
+    
+    case 'mood-chill':
+      return getMoodPlaylist(tracks, 'chill');
+    
+    case 'mood-hype':
+      return getMoodPlaylist(tracks, 'hype');
+    
+    case 'throwback':
+      return getThrowbackPlaylist(tracks);
+    
+    case 'past-favorites':
+      return getPastFavoritesPlaylist(tracks);
+    
+    case 'genre-explorer':
+      return getGenreExplorerPlaylist(tracks);
+    
+    default:
+      // Default to happy mood if no specific type matched
+      return getMoodPlaylist(tracks, 'happy');
+  }
+}
+
+// Get mood-based playlist
+function getMoodPlaylist(tracks, mood) {
+  // Filter tracks that have audio features
+  const tracksWithFeatures = tracks.filter(track => track.audioFeatures);
+  
+  if (tracksWithFeatures.length === 0) {
+    // Fallback to popularity if no audio features
+    return tracks
+      .sort((a, b) => b.popularity - a.popularity)
+      .slice(0, 10);
+  }
+  
+  let filteredTracks;
+  
+  switch (mood) {
+    case 'happy':
+      // Happy: high valence, high energy
+      filteredTracks = tracksWithFeatures
+        .filter(track => track.audioFeatures)
+        .sort((a, b) => {
+          const scoreA = (a.audioFeatures.valence * 0.7) + (a.audioFeatures.energy * 0.3);
+          const scoreB = (b.audioFeatures.valence * 0.7) + (b.audioFeatures.energy * 0.3);
+          return scoreB - scoreA;
+        });
+      break;
+    
+    case 'sad':
+      // Sad: low valence, low energy
+      filteredTracks = tracksWithFeatures
+        .filter(track => track.audioFeatures)
+        .sort((a, b) => {
+          const scoreA = ((1 - a.audioFeatures.valence) * 0.7) + ((1 - a.audioFeatures.energy) * 0.3);
+          const scoreB = ((1 - b.audioFeatures.valence) * 0.7) + ((1 - b.audioFeatures.energy) * 0.3);
+          return scoreB - scoreA;
+        });
+      break;
+    
+    case 'chill':
+      // Chill: medium valence, low energy, low tempo
+      filteredTracks = tracksWithFeatures
+        .filter(track => track.audioFeatures)
+        .sort((a, b) => {
+          const tempoFactorA = a.audioFeatures.tempo > 120 ? 0 : (120 - a.audioFeatures.tempo) / 120;
+          const tempoFactorB = b.audioFeatures.tempo > 120 ? 0 : (120 - b.audioFeatures.tempo) / 120;
+          
+          const scoreA = (a.audioFeatures.valence * 0.3) + ((1 - a.audioFeatures.energy) * 0.4) + (tempoFactorA * 0.3);
+          const scoreB = (b.audioFeatures.valence * 0.3) + ((1 - b.audioFeatures.energy) * 0.4) + (tempoFactorB * 0.3);
+          return scoreB - scoreA;
+        });
+      break;
+    
+    case 'hype':
+      // Hype: high energy, high danceability, high tempo
+      filteredTracks = tracksWithFeatures
+        .filter(track => track.audioFeatures)
+        .sort((a, b) => {
+          const scoreA = (a.audioFeatures.energy * 0.4) + (a.audioFeatures.danceability * 0.3) + ((a.audioFeatures.tempo / 200) * 0.3);
+          const scoreB = (b.audioFeatures.energy * 0.4) + (b.audioFeatures.danceability * 0.3) + ((b.audioFeatures.tempo / 200) * 0.3);
+          return scoreB - scoreA;
+        });
+      break;
+    
+    default:
+      // Default to popularity
+      filteredTracks = tracksWithFeatures.sort((a, b) => b.popularity - a.popularity);
+  }
+  
+  // Take top 10 tracks
+  return filteredTracks.slice(0, 10);
+}
+
+// Get throwback playlist (older music)
+function getThrowbackPlaylist(tracks) {
+  // Filter tracks with release dates
+  const tracksWithDates = tracks.filter(track => 
+    track.album && track.album.release_date && track.album.release_date.length >= 4
+  );
+  
+  if (tracksWithDates.length === 0) {
+    // Fallback to random selection if no dates
+    return tracks
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 10);
+  }
+  
+  // Sort by release date (oldest first)
+  const sortedTracks = tracksWithDates.sort((a, b) => {
+    const yearA = a.album.release_date.substring(0, 4);
+    const yearB = b.album.release_date.substring(0, 4);
+    return yearA - yearB;
+  });
+  
+  // Focus on music older than 5 years
+  const currentYear = new Date().getFullYear();
+  const oldTracks = sortedTracks.filter(track => {
+    const releaseYear = parseInt(track.album.release_date.substring(0, 4));
+    return releaseYear < (currentYear - 5);
+  });
+  
+  // If we have enough old tracks, use those, otherwise use the oldest available
+  return (oldTracks.length >= 10 ? oldTracks : sortedTracks).slice(0, 10);
+}
+
+// Get past favorites playlist (user's most popular saved tracks)
+function getPastFavoritesPlaylist(tracks) {
+  // Sort by popularity
+  return tracks
+    .sort((a, b) => b.popularity - a.popularity)
+    .slice(0, 10);
+}
+
+// Get genre explorer playlist (diverse selection of genres)
+function getGenreExplorerPlaylist(tracks) {
+  // Group tracks by artist
+  const artistGroups = {};
+  tracks.forEach(track => {
+    const mainArtist = track.artist.split(',')[0].trim();
+    if (!artistGroups[mainArtist]) {
+      artistGroups[mainArtist] = [];
+    }
+    artistGroups[mainArtist].push(track);
+  });
+  
+  // Take one track from each artist
+  let selectedTracks = [];
+  const artists = Object.keys(artistGroups);
+  
+  // Shuffle artists for variety
+  const shuffledArtists = artists.sort(() => Math.random() - 0.5);
+  
+  // Take one track from each artist until we have 10
+  for (let i = 0; i < shuffledArtists.length && selectedTracks.length < 10; i++) {
+    if (artistGroups[shuffledArtists[i]].length > 0) {
+      // Pick the most popular track from this artist
+      const artistTracks = artistGroups[shuffledArtists[i]];
+      const bestTrack = artistTracks.sort((a, b) => b.popularity - a.popularity)[0];
+      selectedTracks.push(bestTrack);
+    }
+  }
+  
+  // If we still need more tracks, add remaining popular ones
+  if (selectedTracks.length < 10) {
+    const remainingTracks = tracks
+      .filter(track => !selectedTracks.includes(track))
+      .sort((a, b) => b.popularity - a.popularity);
+    
+    selectedTracks = selectedTracks.concat(
+      remainingTracks.slice(0, 10 - selectedTracks.length)
+    );
+  }
+  
+  return selectedTracks;
 }
 
 // Function to get a readable name from playlist type
