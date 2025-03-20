@@ -286,38 +286,14 @@ async function generatePlaylistByType(playlistType) {
   console.log(`Starting generation of ${playlistType} playlist`);
   
   try {
-    // First, get required data based on playlist type
+    // Handle "new-releases" specially
     if (playlistType === 'new-releases') {
-      // For new releases, use the new releases API
       return await getNewReleases();
     }
     
-    // Get audio features for saved/top tracks depending on playlist type
-    let tracksWithFeatures;
-    
-    // For throwback and past-favorites, we need user's saved tracks
-    if (playlistType === 'throwback' || playlistType === 'past-favorites') {
-      tracksWithFeatures = await getSavedTracksWithFeatures();
-    } else {
-      // For other playlist types, try saved tracks first, then fall back to top tracks
-      try {
-        tracksWithFeatures = await getSavedTracksWithFeatures();
-        if (!tracksWithFeatures || tracksWithFeatures.length === 0) {
-          throw new Error("No saved tracks");
-        }
-      } catch (error) {
-        console.log("Falling back to top tracks");
-        tracksWithFeatures = await getTopTracksWithFeatures();
-      }
-    }
-    
-    // If we still don't have tracks, throw an error
-    if (!tracksWithFeatures || tracksWithFeatures.length === 0) {
-      throw new Error("No tracks available to generate a playlist.");
-    }
-    
-    // Process tracks based on playlist type
-    return processTracksForPlaylist(tracksWithFeatures, playlistType);
+    // For all other types, use Spotify's recommendation engine
+    // We'll avoid using audio features due to 403 error
+    return await getRecommendedTracks(playlistType);
     
   } catch (error) {
     console.error("Error in playlist generator:", error);
@@ -643,87 +619,404 @@ function getMoodPlaylist(tracks, mood) {
   return filteredTracks.slice(0, 10);
 }
 
-// Get throwback playlist (older music)
-function getThrowbackPlaylist(tracks) {
-  // Filter tracks with release dates
-  const tracksWithDates = tracks.filter(track => 
-    track.album && track.album.release_date && track.album.release_date.length >= 4
-  );
+// Get recommended tracks based on playlist type
+async function getRecommendedTracks(playlistType) {
+  console.log(`Getting recommendations for ${playlistType} playlist`);
   
-  if (tracksWithDates.length === 0) {
-    // Fallback to random selection if no dates
-    return tracks
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 10);
-  }
+  // Step 1: Get seed tracks from user's library
+  let seedTracks = [];
   
-  // Sort by release date (oldest first)
-  const sortedTracks = tracksWithDates.sort((a, b) => {
-    const yearA = a.album.release_date.substring(0, 4);
-    const yearB = b.album.release_date.substring(0, 4);
-    return yearA - yearB;
-  });
-  
-  // Focus on music older than 5 years
-  const currentYear = new Date().getFullYear();
-  const oldTracks = sortedTracks.filter(track => {
-    const releaseYear = parseInt(track.album.release_date.substring(0, 4));
-    return releaseYear < (currentYear - 5);
-  });
-  
-  // If we have enough old tracks, use those, otherwise use the oldest available
-  return (oldTracks.length >= 10 ? oldTracks : sortedTracks).slice(0, 10);
-}
-
-// Get past favorites playlist (user's most popular saved tracks)
-function getPastFavoritesPlaylist(tracks) {
-  // Sort by popularity
-  return tracks
-    .sort((a, b) => b.popularity - a.popularity)
-    .slice(0, 10);
-}
-
-// Get genre explorer playlist (diverse selection of genres)
-function getGenreExplorerPlaylist(tracks) {
-  // Group tracks by artist
-  const artistGroups = {};
-  tracks.forEach(track => {
-    const mainArtist = track.artist.split(',')[0].trim();
-    if (!artistGroups[mainArtist]) {
-      artistGroups[mainArtist] = [];
+  try {
+    // Try to get top tracks first (if we have permission)
+    try {
+      const topTracksResponse = await fetch('https://api.spotify.com/v1/me/top/tracks?limit=5&time_range=medium_term', {
+        method: 'GET',
+        headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+      });
+      
+      if (topTracksResponse.ok) {
+        const topTracksData = await topTracksResponse.json();
+        if (topTracksData.items && topTracksData.items.length > 0) {
+          seedTracks = topTracksData.items.map(track => track.id).slice(0, 5);
+          console.log("Using top tracks as seeds:", seedTracks);
+        }
+      } else {
+        console.log("Couldn't get top tracks, status:", topTracksResponse.status);
+      }
+    } catch (error) {
+      console.log("Error getting top tracks:", error.message);
     }
-    artistGroups[mainArtist].push(track);
-  });
-  
-  // Take one track from each artist
-  let selectedTracks = [];
-  const artists = Object.keys(artistGroups);
-  
-  // Shuffle artists for variety
-  const shuffledArtists = artists.sort(() => Math.random() - 0.5);
-  
-  // Take one track from each artist until we have 10
-  for (let i = 0; i < shuffledArtists.length && selectedTracks.length < 10; i++) {
-    if (artistGroups[shuffledArtists[i]].length > 0) {
-      // Pick the most popular track from this artist
-      const artistTracks = artistGroups[shuffledArtists[i]];
-      const bestTrack = artistTracks.sort((a, b) => b.popularity - a.popularity)[0];
-      selectedTracks.push(bestTrack);
-    }
-  }
-  
-  // If we still need more tracks, add remaining popular ones
-  if (selectedTracks.length < 10) {
-    const remainingTracks = tracks
-      .filter(track => !selectedTracks.includes(track))
-      .sort((a, b) => b.popularity - a.popularity);
     
-    selectedTracks = selectedTracks.concat(
-      remainingTracks.slice(0, 10 - selectedTracks.length)
-    );
+    // If we don't have enough seed tracks, try saved tracks
+    if (seedTracks.length < 2) {
+      try {
+        const savedTracksResponse = await fetch('https://api.spotify.com/v1/me/tracks?limit=5', {
+          method: 'GET',
+          headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+        });
+        
+        if (savedTracksResponse.ok) {
+          const savedTracksData = await savedTracksResponse.json();
+          if (savedTracksData.items && savedTracksData.items.length > 0) {
+            const savedIds = savedTracksData.items.map(item => item.track.id);
+            console.log("Using saved tracks as seeds:", savedIds);
+            
+            // Add only new tracks not already in seedTracks
+            for (let id of savedIds) {
+              if (!seedTracks.includes(id) && seedTracks.length < 5) {
+                seedTracks.push(id);
+              }
+            }
+          }
+        } else {
+          console.log("Couldn't get saved tracks, status:", savedTracksResponse.status);
+        }
+      } catch (error) {
+        console.log("Error getting saved tracks:", error.message);
+      }
+    }
+    
+    // If we still don't have enough seed tracks, try a different approach with genres
+    if (seedTracks.length < 2) {
+      console.log("Not enough seed tracks, falling back to genres");
+      return await getGenreBasedRecommendations();
+    }
+    
+    if (seedTracks.length === 0) {
+      console.error("No seed tracks available. Falling back to genre-based recommendations.");
+      return await getGenreBasedRecommendations();
+    }
+    
+    // Step 2: Set up parameters based on playlist type
+    const params = new URLSearchParams();
+    
+    // Add seed tracks
+    params.append('seed_tracks', seedTracks.join(','));
+    
+    // Set target parameter values based on playlist type
+    switch (playlistType) {
+      case 'mood-happy':
+        params.append('target_valence', '0.8'); // High positivity
+        params.append('target_energy', '0.7');  // Moderate-high energy
+        params.append('min_valence', '0.6');    // Ensure songs are positive
+        break;
+        
+      case 'mood-sad':
+        params.append('target_valence', '0.2');     // Low positivity
+        params.append('target_energy', '0.3');      // Low energy
+        params.append('max_valence', '0.4');        // Ensure songs aren't too happy
+        break;
+        
+      case 'mood-chill':
+        params.append('target_energy', '0.3');      // Low energy
+        params.append('target_tempo', '100');       // Slower tempo
+        params.append('target_acousticness', '0.6'); // More acoustic
+        params.append('max_energy', '0.5');         // Cap the energy
+        break;
+        
+      case 'mood-hype':
+        params.append('target_energy', '0.9');      // High energy
+        params.append('target_danceability', '0.8'); // High danceability
+        params.append('target_tempo', '130');       // Fast tempo
+        params.append('min_energy', '0.7');         // Ensure high energy
+        break;
+        
+      case 'throwback':
+        // For throwbacks, we need a different approach
+        return await getThrowbackRecommendations(seedTracks);
+        
+      case 'past-favorites':
+        // For past favorites, boost popularity
+        params.append('target_popularity', '90');   // Very popular tracks
+        break;
+        
+      case 'genre-explorer':
+        // For genre explorer, use genre-based approach
+        return await getGenreBasedRecommendations();
+        
+      default:
+        // Default mood is happy
+        params.append('target_valence', '0.7');
+        params.append('target_energy', '0.7');
+    }
+    
+    // Add limit
+    params.append('limit', '10');
+    
+    console.log("Requesting recommendations with params:", params.toString());
+    
+    // Step 3: Get recommendations from Spotify
+    const recommendationsResponse = await fetch(`https://api.spotify.com/v1/recommendations?${params.toString()}`, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+    });
+    
+    if (!recommendationsResponse.ok) {
+      console.error("Recommendations error:", await recommendationsResponse.text());
+      throw new Error(`Failed to get recommendations: ${recommendationsResponse.status}`);
+    }
+    
+    const recommendationsData = await recommendationsResponse.json();
+    
+    if (!recommendationsData.tracks || recommendationsData.tracks.length === 0) {
+      throw new Error("No recommendations found");
+    }
+    
+    console.log(`Got ${recommendationsData.tracks.length} recommendations`);
+    
+    // Format the tracks for our UI
+    return recommendationsData.tracks.map(track => ({
+      name: track.name,
+      artist: track.artists.map(a => a.name).join(', '),
+      id: track.id,
+      albumCover: track.album && track.album.images && track.album.images.length > 0 
+        ? track.album.images[0].url 
+        : '',
+      popularity: track.popularity || 50,
+      album: track.album ? {
+        name: track.album.name,
+        release_date: track.album.release_date || '2023'
+      } : null
+    }));
+    
+  } catch (error) {
+    console.error("Error getting recommendations:", error);
+    throw error;
   }
+}
+
+// Get recommendations for throwback playlist
+// Complete getThrowbackRecommendations function
+async function getThrowbackRecommendations(seedTracks) {
+  console.log("Getting throwback recommendations");
   
-  return selectedTracks;
+  try {
+    // For throwbacks, we want older music
+    // We'll leverage Spotify recommendations but with older tracks
+    
+    // Get a year range from 20-40 years ago
+    const currentYear = new Date().getFullYear();
+    const minYear = currentYear - 40;
+    const maxYear = currentYear - 15; // Not too recent, not too old
+    
+    console.log(`Looking for music from ${minYear} to ${maxYear}`);
+    
+    // Use seed tracks plus some special parameters for throwbacks
+    const params = new URLSearchParams();
+    params.append('seed_tracks', seedTracks.join(','));
+    params.append('limit', '30'); // Request more to filter
+    params.append('min_popularity', '50'); // Somewhat popular
+    
+    const recommendationsResponse = await fetch(`https://api.spotify.com/v1/recommendations?${params.toString()}`, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+    });
+    
+    if (!recommendationsResponse.ok) {
+      console.error("Throwback recommendations error:", await recommendationsResponse.text());
+      throw new Error(`Failed to get throwback recommendations: ${recommendationsResponse.status}`);
+    }
+    
+    const recommendationsData = await recommendationsResponse.json();
+    
+    if (!recommendationsData.tracks || recommendationsData.tracks.length === 0) {
+      throw new Error("No throwback recommendations found");
+    }
+    
+    console.log(`Got ${recommendationsData.tracks.length} recommendations, filtering for throwbacks`);
+    
+    // Filter for tracks with release dates in our throwback range
+    let throwbackTracks = recommendationsData.tracks
+      .filter(track => {
+        if (track.album && track.album.release_date && track.album.release_date.length >= 4) {
+          const releaseYear = parseInt(track.album.release_date.substring(0, 4));
+          return releaseYear >= minYear && releaseYear <= maxYear;
+        }
+        return false;
+      })
+      .map(track => ({
+        name: track.name,
+        artist: track.artists.map(a => a.name).join(', '),
+        id: track.id,
+        albumCover: track.album && track.album.images && track.album.images.length > 0 
+          ? track.album.images[0].url 
+          : '',
+        popularity: track.popularity || 50,
+        album: track.album ? {
+          name: track.album.name,
+          release_date: track.album.release_date || '2000'
+        } : null
+      }));
+    
+    console.log(`Found ${throwbackTracks.length} tracks within the throwback time range`);
+    
+    // If we don't have enough throwback tracks, get general recommendations
+    if (throwbackTracks.length < 10) {
+      console.log("Not enough throwback tracks, adding general recommendations");
+      
+      // Fall back to general popular tracks
+      const fallbackTracks = recommendationsData.tracks
+        .filter(track => !throwbackTracks.some(t => t.id === track.id))
+        .map(track => ({
+          name: track.name,
+          artist: track.artists.map(a => a.name).join(', '),
+          id: track.id,
+          albumCover: track.album && track.album.images && track.album.images.length > 0 
+            ? track.album.images[0].url 
+            : '',
+          popularity: track.popularity || 50,
+          album: track.album ? {
+            name: track.album.name,
+            release_date: track.album.release_date || '2000'
+          } : null
+        }));
+      
+      throwbackTracks = throwbackTracks.concat(fallbackTracks);
+    }
+    
+    // Return up to 10 tracks
+    return throwbackTracks.slice(0, 10);
+    
+  } catch (error) {
+    console.error("Error getting throwback recommendations:", error);
+    throw error;
+  }
+}
+
+// Get genre-based recommendations
+async function getGenreBasedRecommendations() {
+  try {
+    console.log("Getting genre-based recommendations");
+    
+    // Step 1: Get available genres
+    const genresResponse = await fetch('https://api.spotify.com/v1/recommendations/available-genre-seeds', {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+    });
+    
+    if (!genresResponse.ok) {
+      console.error("Failed to get genres:", await genresResponse.text());
+      throw new Error(`Failed to get available genres: ${genresResponse.status}`);
+    }
+    
+    const genresData = await genresResponse.json();
+    
+    if (!genresData.genres || genresData.genres.length === 0) {
+      throw new Error("No genres available");
+    }
+    
+    console.log(`Found ${genresData.genres.length} available genres`);
+    
+    // Step 2: Try to get user's top artists (if we have permission)
+    let preferredGenres = [];
+    
+    try {
+      const topArtistsResponse = await fetch('https://api.spotify.com/v1/me/top/artists?limit=10', {
+        method: 'GET',
+        headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+      });
+      
+      if (topArtistsResponse.ok) {
+        const topArtistsData = await topArtistsResponse.json();
+        
+        if (topArtistsData.items && topArtistsData.items.length > 0) {
+          // Collect all genres from top artists
+          const allUserGenres = new Set();
+          topArtistsData.items.forEach(artist => {
+            if (artist.genres) {
+              artist.genres.forEach(genre => allUserGenres.add(genre));
+            }
+          });
+          
+          console.log("User's genre preferences:", Array.from(allUserGenres));
+          
+          // Match user genres with available genre seeds
+          preferredGenres = Array.from(allUserGenres)
+            .filter(genre => genresData.genres.includes(genre))
+            .slice(0, 5); // Max 5 genres for recommendation
+        }
+      } else {
+        console.log("Couldn't get top artists, status:", topArtistsResponse.status);
+      }
+    } 
+    catch (error) {
+      console.log("Error getting top artists:", error.message);
+    }
+    
+    
+    // If we don't have enough preferred genres, add some popular ones
+    const popularGenres = ['pop', 'rock', 'hip-hop', 'indie', 'electronic', 'jazz', 'classical', 'dance', 'r-n-b', 'alternative'];
+    
+    while (preferredGenres.length < 5) {
+      // Find a popular genre we haven't added yet
+      const genre = popularGenres.find(g => !preferredGenres.includes(g) && genresData.genres.includes(g));
+      
+      if (genre) {
+        preferredGenres.push(genre);
+      } else {
+        // If we can't find more popular genres, add random ones
+        const remainingGenres = genresData.genres.filter(g => !preferredGenres.includes(g));
+        
+        if (remainingGenres.length > 0) {
+          const randomIndex = Math.floor(Math.random() * remainingGenres.length);
+          preferredGenres.push(remainingGenres[randomIndex]);
+        } else {
+          break; // No more genres to add
+        }
+      }
+    }
+    
+    console.log("Selected genres for recommendations:", preferredGenres);
+    
+    // Step 3: Get recommendations based on genres
+    // We'll make a single request with multiple seed genres
+    const params = new URLSearchParams();
+    // Use first 5 genres (Spotify API limit)
+    params.append('seed_genres', preferredGenres.slice(0, 5).join(','));
+    params.append('limit', '10');
+    params.append('min_popularity', '20'); // Ensure somewhat known songs
+    
+    console.log("Requesting genre recommendations with params:", params.toString());
+    
+    const recommendationsResponse = await fetch(`https://api.spotify.com/v1/recommendations?${params.toString()}`, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+    });
+    
+    if (!recommendationsResponse.ok) {
+      console.error("Genre recommendations error:", await recommendationsResponse.text());
+      throw new Error(`Failed to get genre recommendations: ${recommendationsResponse.status}`);
+    }
+    
+    const recommendationsData = await recommendationsResponse.json();
+    
+    if (!recommendationsData.tracks || recommendationsData.tracks.length === 0) {
+      throw new Error("No genre recommendations found");
+    }
+    
+    console.log(`Got ${recommendationsData.tracks.length} genre-based recommendations`);
+    
+    // Format tracks for UI
+    const formattedTracks = recommendationsData.tracks.map(track => ({
+      name: track.name,
+      artist: track.artists.map(a => a.name).join(', '),
+      id: track.id,
+      albumCover: track.album && track.album.images && track.album.images.length > 0 
+        ? track.album.images[0].url 
+        : '',
+      popularity: track.popularity || 50,
+      album: track.album ? {
+        name: track.album.name,
+        release_date: track.album.release_date || '2023'
+      } : null
+    }));
+    
+    return formattedTracks.slice(0, 10);
+    
+  } catch (error) {
+    console.error("Error getting genre-based recommendations:", error);
+    throw error;
+  }
 }
 
 // Function to get a readable name from playlist type
