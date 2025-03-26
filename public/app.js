@@ -1949,8 +1949,6 @@ function renderTracksTemplate(targetId, tracks) {
   targetElement.appendChild(trackContainer);
 }
 
-
-
 // Function to save CSV recommendations to Spotify playlist
 async function saveCSVRecommendationsToSpotify() {
   if (!lastCsvRecommendations || lastCsvRecommendations.length === 0) {
@@ -2002,7 +2000,7 @@ async function saveCSVRecommendationsToSpotify() {
     }
     
     // Create and save playlist
-    const playlistName = "CSV Recommendations by Spotify Genie";
+    const playlistName = "Spotify Genie Recs";
     const result = await savePlaylistToSpotify(playlistName, trackUris);
     
     // Update UI based on result
