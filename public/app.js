@@ -46,8 +46,9 @@ const code = args.get('code');
 
 
 // MAIN APP INITIALIZATION
-// Updated initApp function with better error handling and debugging
 async function initApp() {
+  // Add custom styles first
+  addStyles();
   console.log("==== APP INITIALIZATION STARTED ====");
  
   // Handle auth callback
@@ -363,45 +364,6 @@ async function getUserSavedTracks(limit = 20) {
   }
 }
 
-// Fix for getUserSavedTracks function to properly handle API response
-async function getUserSavedTracks(limit = 20) {
-  try {
-    console.log(`Fetching up to ${limit} saved tracks...`);
-    const response = await fetch(`https://api.spotify.com/v1/me/tracks?limit=${limit}`, {
-      method: 'GET',
-      headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`API error: ${errorData.error ? errorData.error.message : response.statusText}`);
-    }
-
-    const data = await response.json();
-    console.log("Saved tracks API response:", data);
-    
-    // Validate the response structure
-    if (!data.items || !Array.isArray(data.items)) {
-      console.error("Unexpected API response format:", data);
-      throw new Error("Unexpected API response format");
-    }
-    
-    // Map the response to a simplified format
-    const tracks = data.items.map(item => ({
-      name: item.track.name,
-      artist: item.track.artists.map(a => a.name).join(', '),
-      id: item.track.id,
-      albumCover: item.track.album.images[0]?.url || ''
-    }));
-    
-    console.log(`Successfully processed ${tracks.length} tracks`);
-    return tracks;
-  } catch (error) {
-    console.error("Error in getUserSavedTracks:", error);
-    throw error; // Re-throw to be caught by the caller
-  }
-}
-
 // Fix for searchSpotify function to properly handle API response
 async function searchSpotify(query, type = 'track', limit = 10) {
   if (!query) return [];
@@ -444,6 +406,7 @@ async function searchSpotify(query, type = 'track', limit = 10) {
 }
 
 // New function to render tracks properly
+// Fix for the renderTracksTemplate function to ensure the export button is always added
 function renderTracksTemplate(targetId, tracks) {
   console.log(`Rendering ${tracks.length} tracks to ${targetId}`);
   const targetElement = document.getElementById(targetId);
@@ -462,6 +425,13 @@ function renderTracksTemplate(targetId, tracks) {
   heading.textContent = 'Your Saved Tracks';
   container.appendChild(heading);
   
+  // Always add the export button at the top
+  const exportButton = document.createElement('button');
+  exportButton.textContent = 'Download Liked Songs as CSV';
+  exportButton.onclick = exportLikedSongsToCSV;
+  exportButton.className = 'spotify-button';
+  container.appendChild(exportButton);
+  
   if (!tracks || tracks.length === 0) {
     const noTracksMsg = document.createElement('p');
     noTracksMsg.textContent = "You don't have any saved tracks yet.";
@@ -475,16 +445,7 @@ function renderTracksTemplate(targetId, tracks) {
       const trackItem = document.createElement('div');
       trackItem.className = 'track-item';
       
-      // Create album cover if available
-      if (track.albumCover) {
-        const albumImg = document.createElement('img');
-        albumImg.src = track.albumCover;
-        albumImg.alt = `${track.name} album art`;
-        albumImg.className = 'album-cover';
-        trackItem.appendChild(albumImg);
-      }
-      
-      // Create track info container
+      // Create track info container first (this will be on the left)
       const trackInfo = document.createElement('div');
       trackInfo.className = 'track-info';
       
@@ -500,23 +461,75 @@ function renderTracksTemplate(targetId, tracks) {
       artistName.textContent = track.artist;
       trackInfo.appendChild(artistName);
       
+      // Add the track info to the track item (on the left)
       trackItem.appendChild(trackInfo);
+      
+      // Create album cover if available (this will be on the right)
+      if (track.albumCover) {
+        const albumImg = document.createElement('img');
+        albumImg.src = track.albumCover;
+        albumImg.alt = `${track.name} album art`;
+        albumImg.className = 'album-cover';
+        trackItem.appendChild(albumImg);
+      }
+      
       tracksList.appendChild(trackItem);
     });
     
     container.appendChild(tracksList);
-    
-    // Add export button
-    const exportButton = document.createElement('button');
-    exportButton.textContent = 'Download Liked Songs as CSV';
-    exportButton.onclick = exportLikedSongsToCSV;
-    exportButton.className = 'spotify-button';
-    container.appendChild(exportButton);
   }
   
   // Clear and append to target
   targetElement.innerHTML = '';
   targetElement.appendChild(container);
+}
+
+// Add CSS styles to position album covers on the right
+function addStyles() {
+  // Check if our styles are already added
+  if (document.getElementById('spotify-genie-styles')) return;
+  
+  const styleEl = document.createElement('style');
+  styleEl.id = 'spotify-genie-styles';
+  styleEl.textContent = `
+    .track-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      padding: 10px;
+      border-radius: 4px;
+      background-color: #f5f5f5;
+    }
+    
+    .track-info {
+      flex-grow: 1;
+      margin-right: 10px;
+    }
+    
+    .track-name {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    
+    .track-artist {
+      color: #666;
+    }
+    
+    .album-cover {
+      width: 60px;
+      height: 60px;
+      object-fit: cover;
+      border-radius: 4px;
+    }
+    
+    .track-list {
+      margin-bottom: 20px;
+    }
+  `;
+  
+  document.head.appendChild(styleEl);
+  console.log("Added custom styles for track display");
 }
 
 // New function to render search results
@@ -551,16 +564,7 @@ function renderSearchResultsTemplate(targetId, { searchResults }) {
       const trackItem = document.createElement('div');
       trackItem.className = 'track-item';
       
-      // Create album cover if available
-      if (track.albumCover) {
-        const albumImg = document.createElement('img');
-        albumImg.src = track.albumCover;
-        albumImg.alt = `${track.name} album art`;
-        albumImg.className = 'album-cover';
-        trackItem.appendChild(albumImg);
-      }
-      
-      // Create track info container
+            // Create track info container first (this will be on the left)
       const trackInfo = document.createElement('div');
       trackInfo.className = 'track-info';
       
@@ -576,7 +580,17 @@ function renderSearchResultsTemplate(targetId, { searchResults }) {
       artistName.textContent = track.artist;
       trackInfo.appendChild(artistName);
       
+      // Add the track info to the track item (on the left)
       trackItem.appendChild(trackInfo);
+      
+      // Create album cover if available (this will be on the right)
+      if (track.albumCover) {
+        const albumImg = document.createElement('img');
+        albumImg.src = track.albumCover;
+        albumImg.alt = `${track.name} album art`;
+        albumImg.className = 'album-cover';
+        trackItem.appendChild(albumImg);
+      }
       resultsList.appendChild(trackItem);
     });
     
