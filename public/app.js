@@ -1806,11 +1806,13 @@ async function useSpotifyLikedSongs() {
       recommendationEngine = new window.RecommendationEngine();
     }
     
-    // Format tracks to match liked songs format (Name, Artist)
-    const formattedTracks = tracks.map(track => ({
-      Name: track.name,
-      Artist: track.artist
+    const formattedRecommendations = recommendations.map(song => ({
+      name: song.name || "Unknown Track",
+      artist: song.artist || "Unknown Artist",
+      id: song.id || `local-${(song.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
+      albumCover: song.albumCover || song.album_cover || '', // Fix album cover extraction
     }));
+    
     
     console.log("Formatted tracks for liked songs:", formattedTracks);
     
@@ -1853,39 +1855,7 @@ async function generateCSVRecommendations() {
       throw new Error("Please load both a dataset and liked songs first");
     }
     
-    console.log("Starting recommendation generation with:", {
-      datasetSize: recommendationEngine.dataset.length,
-      likedSongsSize: recommendationEngine.likedSongs.length
-    });
-    
-    // Verify dataset has required properties
-    const sampleSong = recommendationEngine.dataset[0];
-    console.log("Sample song from dataset:", sampleSong);
-    
-    // Make sure required features exist in the dataset
-    const requiredFeatures = ['popularity', 'danceability', 'energy', 'acousticness', 'valence', 'tempo'];
-    const missingFeatures = requiredFeatures.filter(feature => 
-      !sampleSong.hasOwnProperty(feature) && !sampleSong.hasOwnProperty(`${feature}_standardized`)
-    );
-    
-    if (missingFeatures.length > 0) {
-      console.warn("Dataset is missing these features:", missingFeatures);
-      // If features are missing, add dummy values
-      recommendationEngine.dataset.forEach(song => {
-        missingFeatures.forEach(feature => {
-          song[feature] = Math.random() * 0.5 + 0.25; // Random value between 0.25 and 0.75
-        });
-      });
-      // Reprocess data with added features
-      recommendationEngine.preprocessData();
-    }
-    
-    // Verify liked songs have required properties
-    console.log("Sample liked song:", recommendationEngine.likedSongs[0]);
-    
-    // Force preprocessing before generating recommendations
-    console.log("Preprocessing data...");
-    recommendationEngine.preprocessData();
+    console.log("Starting recommendation generation...");
     
     // Generate recommendations
     console.log("Calling recommendSongs method...");
@@ -1896,25 +1866,17 @@ async function generateCSVRecommendations() {
       throw new Error("No recommendations were generated");
     }
     
-    // Ensure recommendations have all required properties
-    const cleanedRecommendations = recommendations.map(rec => ({
-      name: rec.name || "Unknown Track",
-      artist: rec.artist || "Unknown Artist",
-      genre: rec.genre || "Unknown Genre",
-      score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
-      id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
-      albumCover: rec.albumCover || ''
-    }));
-    
-    console.log("Cleaned recommendations:", cleanedRecommendations);
-    
-    // Store the recommendation data for saving to playlist
-    lastCsvRecommendations = cleanedRecommendations;
-    
-    // Display recommendations
-    renderRecommendationsTemplate("csv-recommendations-results", {
-      recommendations: cleanedRecommendations
-    });
+    const formattedRecommendations = recommendations.map(song => ({
+      name: song.name || "Unknown Track",
+      artist: song.artist || "Unknown Artist",
+      id: song.id || `local-${(song.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
+      albumCover: song.albumCover || song.album_cover || '', // Fix album cover extraction
+    }));    
+
+    console.log("Formatted recommendations:", formattedRecommendations);
+
+    // Display recommendations using the same logic as saved tracks
+    renderTracksTemplate("csv-recommendations-results", formattedRecommendations);
     
   } catch (error) {
     console.error("Error generating recommendations:", error);
@@ -1922,6 +1884,72 @@ async function generateCSVRecommendations() {
       `<div class="error-message">Error generating recommendations: ${error.message}</div>`;
   }
 }
+
+function renderTracksTemplate(targetId, tracks) {
+  const targetElement = document.getElementById(targetId);
+  if (!targetElement) {
+    console.error(`Target element not found: ${targetId}`);
+    return;
+  }
+
+  if (!tracks || tracks.length === 0) {
+    targetElement.innerHTML = '<p>No tracks found.</p>';
+    return;
+  }
+
+  // Clear the existing content
+  targetElement.innerHTML = "";
+
+  // Create a container for the tracks
+  const trackContainer = document.createElement("div");
+  trackContainer.className = "saved-tracks";
+  trackContainer.innerHTML = "<h3>Liked Songs</h3>";
+
+  // Create the track list and append each track dynamically
+  const trackList = document.createElement("div");
+  trackList.className = "track-list";
+
+  tracks.forEach(track => {
+    const trackItem = document.createElement("div");
+    trackItem.className = "track-item";
+
+    const trackInfo = document.createElement("div");
+    trackInfo.className = "track-info";
+
+    const trackName = document.createElement("div");
+    trackName.className = "track-name";
+    trackName.textContent = track.name;
+
+    const trackArtist = document.createElement("div");
+    trackArtist.className = "track-artist";
+    trackArtist.textContent = track.artist;
+
+    // Album cover (if available)
+    let albumCover = "";
+    if (track.albumCover) {
+      const albumImage = document.createElement("img");
+      albumImage.src = track.albumCover;
+      albumImage.alt = "Album cover";
+      albumImage.className = "album-cover";
+      albumCover = albumImage;
+    }
+
+    // Append track info
+    trackInfo.appendChild(trackName);
+    trackInfo.appendChild(trackArtist);
+
+    trackItem.appendChild(trackInfo);
+    if (albumCover) trackItem.appendChild(albumCover);
+
+    // Add to track list
+    trackList.appendChild(trackItem);
+  });
+
+  trackContainer.appendChild(trackList);
+  targetElement.appendChild(trackContainer);
+}
+
+
 
 // Function to save CSV recommendations to Spotify playlist
 async function saveCSVRecommendationsToSpotify() {
