@@ -267,30 +267,337 @@
     </div>
   </template>
 
+<!-- Templates to add to index.html -->
 
-  <template id="tracks-template">
-    <div class="saved-tracks">
-      <h3>Your Saved Tracks</h3>
-      <div class="track-list">
-        <div data-bind="if tracks && tracks.length > 0">
-          <div data-bind="tracks.map(track => `
-            <div class='track-item'>
-              <div class='track-info'>
-                <div class='track-name'>${track.name}</div>
-                <div class='track-artist'>${track.artist}</div>
-              </div>
-              ${track.albumCover ? `<img src='${track.albumCover}' alt='Album cover' class='album-cover'>` : ''}
-            </div>
-          `).join('')"></div>
-        </div>
-        <div data-bind="if !tracks || tracks.length === 0">
-          <p> </p>
-        </div>
+<!-- CSV Recommendations Container Template -->
+<template id="csv-recommendations-container-template">
+  <div class="csv-recommendations">
+    <h3>CSV-Based Song Recommendations</h3>
+    <p>Get personalized song recommendations based on your taste by uploading a CSV file.</p>
+    
+    <div class="upload-section">
+      <div class="upload-container">
+        <h4>1. Upload Song Dataset</h4>
+        <p>Upload a CSV file containing song data with audio features (popularity, danceability, energy, etc.)</p>
+        <input type="file" id="dataset-upload" accept=".csv" onchange="handleDatasetUpload(event)">
+        <p id="dataset-status">No dataset loaded</p>
+      </div>
+      
+      <div class="upload-container">
+        <h4>2. Your Liked Songs</h4>
+        <p>Either upload a CSV of your liked songs or use your Spotify liked songs</p>
+        <input type="file" id="liked-songs-upload" accept=".csv" onchange="handleLikedSongsUpload(event)">
+        <button onclick="useSpotifyLikedSongs()" class="secondary-button">Use Spotify Liked Songs</button>
+        <p id="liked-songs-status">No liked songs loaded</p>
       </div>
     </div>
-  </template>
+    
+    <div class="recommendations-actions">
+      <h4>3. Generate Recommendations</h4>
+      <button id="generate-recommendations-btn" onclick="generateCSVRecommendations()" disabled>Generate Recommendations</button>
+    </div>
+    
+    <div id="csv-recommendations-results"></div>
+  </div>
+</template>
 
+<!-- CSV Recommendations Results Template -->
+<template id="csv-recommendations-template">
+  <div class="recommendations-results">
+    <h4>Your Personalized Recommendations</h4>
+    <div class="track-list">
+      <div data-bind="if recommendations && recommendations.length > 0">
+        <div data-bind="recommendations.map(track => `
+          <div class='track-item'>
+            <div class='track-info'>
+              <div class='track-name'>${track.name}</div>
+              <div class='track-artist'>${track.artist}</div>
+              <div class='track-details'>Genre: ${track.genre} | Match Score: ${track.score}</div>
+            </div>
+            ${track.albumCover ? `<img src='${track.albumCover}' alt='Album cover' class='album-cover'>` : ''}
+          </div>
+        `).join('')"></div>
+        
+        <!-- Add Save to Spotify button -->
+        <div class="playlist-actions">
+          <button class="save-spotify-btn" onclick="saveCSVRecommendationsToSpotify()">Save to Spotify</button>
+        </div>
+      </div>
+      <div data-bind="if !recommendations || recommendations.length === 0">
+        <p>No recommendations generated yet.</p>
+      </div>
+    </div>
+  </div>
+</template>
 
+<!-- CSS Styles for CSV Recommendations -->
+<style>
+  .csv-recommendations {
+    margin-top: 20px;
+  }
+  
+  .upload-section {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  
+  .upload-container {
+    flex: 1;
+    min-width: 300px;
+    background-color: #333;
+    padding: 15px;
+    border-radius: 8px;
+  }
+  
+  .secondary-button {
+    background-color: #666;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 30px;
+    cursor: pointer;
+    margin-top: 10px;
+  }
+  
+  .recommendations-actions {
+    margin: 20px 0;
+  }
+  
+  .loading {
+    color: #aaa;
+    font-style: italic;
+  }
+  
+  .track-details {
+    font-size: 0.8em;
+    color: #888;
+    margin-top: 2px;
+  }
+  
+  .success-message {
+    background-color: rgba(29, 185, 84, 0.2);
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 20px;
+  }
+  
+  .spotify-button {
+    display: inline-block;
+    background-color: #1DB954;
+    color: white;
+    text-decoration: none;
+    padding: 8px 15px;
+    border-radius: 30px;
+    margin-top: 10px;
+  }
+</style>
+
+  <!-- Fix tracks template -->
+<template id="tracks-template-fixed">
+  <div class="saved-tracks">
+    <h3>Your Saved Tracks</h3>
+    <!-- Download CSV Button -->
+    <button onclick="exportLikedSongsToCSV()">Download Liked Songs as CSV</button>
+    <div class="track-list">
+      <div data-bind="tracksDisplay"></div>
+    </div>
+  </div>
+</template>
+
+<!-- Fix results template -->
+<template id="playlist-results-template-fixed">
+  <div class="playlist-results">
+    <h4 data-bind="playlistTitle"></h4>
+    <div class="track-list">
+      <div data-bind="playlistTracksDisplay"></div>
+      
+      <!-- Add Save to Spotify button -->
+      <div class="playlist-actions" data-bind-style="display: playlistTracks && playlistTracks.length > 0 ? 'block' : 'none'">
+        <button class="save-spotify-btn" onclick="saveToSpotify()">Save to Spotify</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<!-- Fix search results template -->
+<template id="search-results-template-fixed">
+  <div class="results-container">
+    <h4>Search Results</h4>
+    <div class="track-list">
+      <div data-bind="searchResultsDisplay"></div>
+    </div>
+  </div>
+</template>
+
+<!-- Fix CSV recommendations template -->
+<template id="csv-recommendations-template-fixed">
+  <div class="recommendations-results">
+    <h4>Your Personalized Recommendations</h4>
+    <div class="track-list">
+      <div data-bind="recommendationsDisplay"></div>
+      
+      <!-- Add Save to Spotify button -->
+      <div class="playlist-actions" data-bind-style="display: recommendations && recommendations.length > 0 ? 'block' : 'none'">
+        <button class="save-spotify-btn" onclick="saveCSVRecommendationsToSpotify()">Save to Spotify</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+// Helper functions to generate HTML for different templates
+function generateTracksDisplay(tracks) {
+  if (!tracks || tracks.length === 0) {
+    return '<p>No saved tracks found.</p>';
+  }
+  
+  return tracks.map(track => `
+    <div class='track-item'>
+      <div class='track-info'>
+        <div class='track-name'>${track.name}</div>
+        <div class='track-artist'>${track.artist}</div>
+      </div>
+      ${track.albumCover ? `<img src='${track.albumCover}' alt='Album cover' class='album-cover'>` : ''}
+    </div>
+  `).join('');
+}
+
+function generatePlaylistTitle(data) {
+  if (!data.playlistType) return 'Your Custom Playlist';
+  return 'Your ' + data.playlistType.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' Playlist';
+}
+
+function generatePlaylistTracksDisplay(data) {
+  if (!data.playlistTracks || data.playlistTracks.length === 0) {
+    return '<p>No tracks in this playlist yet.</p>';
+  }
+  
+  return data.playlistTracks.map(track => `
+    <div class='track-item'>
+      <div class='track-info'>
+        <div class='track-name'>${track.name}</div>
+        <div class='track-artist'>${track.artist}</div>
+      </div>
+      ${track.albumCover ? `<img src='${track.albumCover}' alt='Album cover' class='album-cover'>` : ''}
+    </div>
+  `).join('');
+}
+
+function generateSearchResultsDisplay(data) {
+  if (!data.searchResults || data.searchResults.length === 0) {
+    return '<p>No results found. Try a different search term.</p>';
+  }
+  
+  return data.searchResults.map(track => `
+    <div class='track-item'>
+      <div class='track-info'>
+        <div class='track-name'>${track.name}</div>
+        <div class='track-artist'>${track.artist}</div>
+      </div>
+      ${track.albumCover ? `<img src='${track.albumCover}' alt='Album cover' class='album-cover'>` : ''}
+    </div>
+  `).join('');
+}
+
+function generateRecommendationsDisplay(data) {
+  if (!data.recommendations || data.recommendations.length === 0) {
+    return '<p>No recommendations generated yet.</p>';
+  }
+  
+  return data.recommendations.map(track => `
+    <div class='track-item'>
+      <div class='track-info'>
+        <div class='track-name'>${track.name}</div>
+        <div class='track-artist'>${track.artist}</div>
+        <div class='track-details'>Genre: ${track.genre || 'Unknown'} | Match Score: ${track.score}</div>
+      </div>
+      ${track.albumCover ? `<img src='${track.albumCover}' alt='Album cover' class='album-cover'>` : ''}
+    </div>
+  `).join('');
+}
+
+// Updated render functions with pre-processed data
+function renderTracksTemplate(targetId, tracks) {
+  const data = {
+    tracksDisplay: generateTracksDisplay(tracks)
+  };
+  renderTemplate(targetId, "tracks-template-fixed", data);
+}
+
+function renderPlaylistResultsTemplate(targetId, playlistData) {
+  const data = {
+    playlistTitle: generatePlaylistTitle(playlistData),
+    playlistTracksDisplay: generatePlaylistTracksDisplay(playlistData),
+    playlistTracks: playlistData.playlistTracks
+  };
+  renderTemplate(targetId, "playlist-results-template-fixed", data);
+}
+
+function renderSearchResultsTemplate(targetId, searchData) {
+  const data = {
+    searchResultsDisplay: generateSearchResultsDisplay(searchData),
+    searchResults: searchData.searchResults
+  };
+  renderTemplate(targetId, "search-results-template-fixed", data);
+}
+
+function renderRecommendationsTemplate(targetId, recommendationsData) {
+  console.log("Rendering recommendations template with data:", recommendationsData);
+  
+  // Add a direct HTML string for debugging/testing
+  const recommendationsHtml = recommendationsData.recommendations.map(track => `
+    <div class='track-item'>
+      <div class='track-info'>
+        <div class='track-name'>${track.name}</div>
+        <div class='track-artist'>${track.artist}</div>
+        <div class='track-details'>Genre: ${track.genre || 'Unknown'} | Match Score: ${track.score}</div>
+      </div>
+      ${track.albumCover ? `<img src='${track.albumCover}' alt='Album cover' class='album-cover'>` : ''}
+    </div>
+  `).join('');
+  
+  // Create data object with both HTML string and original data
+  const data = {
+    recommendationsDisplay: recommendationsHtml,
+    recommendations: recommendationsData.recommendations
+  };
+  
+  console.log("Final data for template:", data);
+  
+  // Use either fixed template or direct HTML insertion
+  const targetElement = document.getElementById(targetId);
+  if (!targetElement) {
+    console.error(`Target element not found: ${targetId}`);
+    return;
+  }
+  
+  try {
+    // Try using the template
+    renderTemplate(targetId, "csv-recommendations-template-fixed", data);
+  } catch (error) {
+    console.error("Error rendering template:", error);
+    // Fallback to direct HTML
+    targetElement.innerHTML = `
+      <div class="recommendations-results">
+        <h4>Your Personalized Recommendations</h4>
+        <div class="track-list">
+          ${recommendationsHtml}
+          ${recommendationsData.recommendations.length > 0 ? `
+            <div class="playlist-actions">
+              <button class="save-spotify-btn" onclick="saveCSVRecommendationsToSpotify()">Save to Spotify</button>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
+  }
+}
+</script>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+  <script src="recommendation-engine.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

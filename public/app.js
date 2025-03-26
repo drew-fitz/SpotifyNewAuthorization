@@ -68,8 +68,8 @@ async function initApp() {
   }
 
 
-  // Check if we're logged in
-  if (currentToken.access_token) {
+   // Check if we're logged in
+   if (currentToken.access_token) {
     console.log("Access token found in localStorage");
    
     try {
@@ -91,17 +91,52 @@ async function initApp() {
       console.log("Rendering playlist generator");
       renderTemplate("playlist-generator-container", "playlist-generator-template");
      
+      // also render CSV recommendations container
+      console.log("Rendering CSV recommendations container");
+      renderTemplate("main", "csv-recommendations-container-template");
+
       // Fetch and render saved tracks
       console.log("Fetching saved tracks");
       try {
+        // First make sure the container exists
+        if (!document.getElementById("tracks-container")) {
+          console.error("tracks-container element not found");
+          createContainers(); // Try creating containers again
+        }
+        
+        // Fetch tracks with a clearer log
+        console.log("Calling getUserSavedTracks()...");
         const tracks = await getUserSavedTracks();
         console.log(`Fetched ${tracks.length} saved tracks`);
-        renderTemplate("tracks-container", "tracks-template", { tracks });
+        
+        if (tracks && tracks.length > 0) {
+          console.log(`Successfully fetched ${tracks.length} saved tracks`);
+          console.log("Rendering tracks template with data:", { tracks });
+          renderTracksTemplate("tracks-container", tracks);
+        } else {
+          console.log("No tracks returned from getUserSavedTracks");
+          document.getElementById("tracks-container").innerHTML = 
+            `<div class="component-container">
+               <h3>Your Saved Tracks</h3>
+               <p>You don't have any saved tracks yet. Save some tracks on Spotify and check back!</p>
+               <button onclick="exportLikedSongsToCSV()">Download Liked Songs as CSV</button>
+             </div>`;
+        }
       } catch (error) {
-        console.error("Error fetching saved tracks:", error);
-        document.getElementById("tracks-container").innerHTML =
-          `<div class="error-message">Error loading saved tracks: ${error.message}</div>`;
+        console.error("Detailed error fetching saved tracks:", error);
+        if (document.getElementById("tracks-container")) {
+          document.getElementById("tracks-container").innerHTML =
+            `<div class="error-message">Error loading saved tracks: ${error.message}</div>
+             <button onclick="location.reload()">Retry</button>`;
+        } else {
+          console.error("tracks-container element not found for error display");
+        }
       }
+      
+      // Also render the CSV recommendations container
+      console.log("Rendering CSV recommendations container");
+      renderTemplate("main", "csv-recommendations-container-template");
+      
     } catch (error) {
       console.error("Error initializing logged-in state:", error);
     }
@@ -113,6 +148,33 @@ async function initApp() {
   console.log("==== APP INITIALIZATION COMPLETED ====");
 }
 
+
+function exportLikedSongsToCSV() {
+  getUserSavedTracks(50).then(tracks => {
+      if (!tracks || tracks.length === 0) {
+          alert("No liked songs found!");
+          return;
+      }
+
+      let csvContent = "data:text/csv;charset=utf-8,Name,Artist\n";
+      tracks.forEach(track => {
+          let row = `"${track.name}","${track.artist}"`;
+          csvContent += row + "\n";
+      });
+
+      // Create and trigger download
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "liked_songs.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+  }).catch(error => {
+      console.error("Error exporting liked songs:", error);
+      alert("Failed to export liked songs.");
+  });
+}
 
 // Create container elements if they don't exist
 function createContainers() {
@@ -238,25 +300,36 @@ async function getUserData() {
 
 
 async function getUserSavedTracks(limit = 20) {
-  const response = await fetch(`https://api.spotify.com/v1/me/tracks?limit=${limit}`, {
-    method: 'GET',
-    headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
-  });
+  try {
+    const response = await fetch(`https://api.spotify.com/v1/me/tracks?limit=${limit}`, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+    });
 
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`API error: ${errorData.error ? errorData.error.message : response.statusText}`);
+    }
 
-  const data = await response.json();
-  if (data.error) {
-    throw new Error(`API error: ${data.error.message || 'Unknown error'}`);
+    const data = await response.json();
+    
+    // Validate the response structure
+    if (!data.items || !Array.isArray(data.items)) {
+      console.error("Unexpected API response format:", data);
+      throw new Error("Unexpected API response format");
+    }
+    
+    return data.items.map(item => ({
+      name: item.track.name,
+      artist: item.track.artists[0].name,
+      id: item.track.id,
+      albumCover: item.track.album.images[0]?.url || ''
+    }));
+  } catch (error) {
+    console.error("Error in getUserSavedTracks:", error);
+    throw error; // Re-throw to be caught by the caller
   }
- 
-  return data.items.map(item => ({
-    name: item.track.name,
-    artist: item.track.artists[0].name,
-    id: item.track.id,
-    albumCover: item.track.album.images[0]?.url || ''
-  }));
 }
-
 
 async function searchSpotify(query, type = 'track', limit = 10) {
   if (!query) return [];
@@ -1149,7 +1222,7 @@ async function handleGeneratePlaylist(event) {
     };
     
     // Render the playlist to the UI
-    renderTemplate("playlist-results", "playlist-results-template", {
+    renderPlaylistResultsTemplate("playlist-results", {
       playlistTracks,
       playlistType
     });
@@ -1447,7 +1520,7 @@ async function handleGeneratePlaylist(event) {
     };
     
     // Render the playlist to the UI
-    renderTemplate("playlist-results", "playlist-results-template", {
+    renderPlaylistResultsTemplate("playlist-results", {
       playlistTracks,
       playlistType
     });
@@ -1501,7 +1574,7 @@ async function handleSearch(event) {
     try {
       const searchResults = await searchSpotify(query);
       console.log(`Found ${searchResults.length} results`);
-      renderTemplate("search-results", "search-results-template", { searchResults });
+      renderSearchResultsTemplate("search-results", { searchResults });
     } catch (error) {
       console.error("Search error:", error);
       document.getElementById("search-results").innerHTML =
@@ -1514,65 +1587,453 @@ async function handleSearch(event) {
 // TEMPLATE RENDERING
 function renderTemplate(targetId, templateId, data = null) {
   console.log(`Rendering template "${templateId}" to target "${targetId}"`);
- 
+
   // Get the template
   const template = document.getElementById(templateId);
   if (!template) {
-    console.error(`Template not found: ${templateId}`);
-    return;
+      console.error(`Template not found: ${templateId}`);
+      return;
   }
- 
+
   // Get the target
-  const target = document.getElementById(targetId);
-  if (!target) {
-    console.error(`Target element not found: ${targetId}`);
-    return;
+  const targetElement = document.getElementById(targetId);
+  if (!targetElement) {
+      console.error(`Target element not found in DOM: "${targetId}"`);
+      return; // Exit early if target element is missing
   }
- 
+
   // Clone the template
   const clone = template.content.cloneNode(true);
- 
-  // Process data bindings
+
+  // Process data bindings if data is provided
   if (data) {
-    const elements = clone.querySelectorAll("*");
-    elements.forEach(ele => {
-      const bindingAttrs = [...ele.attributes].filter(a => a.name.startsWith("data-bind"));
-
-
-      bindingAttrs.forEach(attr => {
-        const target = attr.name.replace(/data-bind-/, "").replace(/data-bind/, "");
-        const targetType = target.startsWith("onclick") ? "HANDLER" : "PROPERTY";
-        const targetProp = target === "" ? "innerHTML" : target;
-
-
-        const prefix = targetType === "PROPERTY" ? "data." : "";
-        const expression = prefix + attr.value.replace(/;\n\r\n/g, "");
-
-
-        try {
-          ele[targetProp] = targetType === "PROPERTY" ? eval(expression) : () => { eval(expression) };
-          ele.removeAttribute(attr.name);
-        } catch (ex) {
-          console.error(`Error binding ${expression} to ${targetProp}:`, ex);
-        }
+      const elements = clone.querySelectorAll("*");
+      elements.forEach((ele) => {
+          // Data binding logic
+          if (ele.dataset && ele.dataset.bind) {
+              try {
+                  const value = evalInContext(ele.dataset.bind, data);
+                  ele.textContent = value;
+              } catch (error) {
+                  console.error(`Error binding data to element:`, error);
+              }
+          }
       });
-    });
   }
- 
+
   // Render to target
-  target.innerHTML = "";
-  target.appendChild(clone);
-  console.log(`Template "${templateId}" rendered successfully`);
+  targetElement.innerHTML = "";
+  targetElement.appendChild(clone);
+  console.log(`Template "${templateId}" rendered successfully to "${targetId}"`);
 }
 
+// Helper function to evaluate expressions in the context of data
+function evalInContext(expr, context) {
+  try {
+    // Create a function that executes with the data as context
+    const evaluator = new Function('data', `with(data) { return ${expr}; }`);
+    return evaluator(context);
+  } catch (error) {
+    console.error(`Error evaluating expression "${expr}":`, error);
+    return '';
+  }
+}
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', initApp);
 
+/**
+ * FIXED CSV Recommendation Feature Integration for Spotify Genie
+ * Replace these functions in app.js
+ */
 
+// Global instance of recommendation engine
+let recommendationEngine = null;
+
+// Function to handle file upload for dataset
+async function handleDatasetUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  try {
+    // Show loading indicator
+    document.getElementById('dataset-status').textContent = "Loading dataset...";
+    
+    // Read the file content
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const content = e.target.result;
+      console.log("Dataset file read successfully, first 100 chars:", content.substring(0, 100));
+      
+      // Initialize recommendation engine if not already done
+      if (!recommendationEngine) {
+        recommendationEngine = new window.RecommendationEngine();
+      }
+      
+      try {
+        // Parse the CSV content directly
+        Papa.parse(content, {
+          header: true,
+          dynamicTyping: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            console.log("Dataset parsed successfully:", {
+              rowCount: results.data.length,
+              fields: results.meta.fields
+            });
+            
+            // Check if dataset has required columns
+            const requiredFields = ['track_name', 'artists'];
+            const missingFields = requiredFields.filter(field => 
+              !results.meta.fields.includes(field)
+            );
+            
+            if (missingFields.length > 0) {
+              console.warn("Dataset missing required fields:", missingFields);
+              // Add missing fields with dummy values
+              results.data.forEach((row, index) => {
+                if (!row.track_name) row.track_name = `Track ${index + 1}`;
+                if (!row.artists) row.artists = "Unknown Artist";
+              });
+            }
+            
+            recommendationEngine.dataset = results.data;
+            
+            try {
+              recommendationEngine.preprocessData();
+              console.log("Dataset preprocessing completed successfully");
+            } catch (preprocessError) {
+              console.error("Error during preprocessing:", preprocessError);
+            }
+            
+            document.getElementById('dataset-status').textContent = 
+              `Dataset loaded: ${recommendationEngine.dataset.length} songs`;
+            
+            // Enable recommendations button if both datasets are loaded
+            if (recommendationEngine.likedSongs) {
+              document.getElementById('generate-recommendations-btn').disabled = false;
+            }
+          },
+          error: (error) => {
+            console.error("Error parsing dataset CSV:", error);
+            document.getElementById('dataset-status').textContent = 
+              `Error loading dataset: ${error.message}`;
+          }
+        });
+      } catch (error) {
+        console.error("Error loading dataset:", error);
+        document.getElementById('dataset-status').textContent = 
+          `Error loading dataset: ${error.message}`;
+      }
+    };
+    reader.readAsText(file);
+  } catch (error) {
+    console.error("Error handling dataset upload:", error);
+    document.getElementById('dataset-status').textContent = 
+      `Error: ${error.message}`;
+  }
+}
+
+// Function to handle liked songs upload
+async function handleLikedSongsUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  try {
+    // Show loading indicator
+    document.getElementById('liked-songs-status').textContent = "Loading liked songs...";
+    
+    // Read the file content
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const content = e.target.result;
+      
+      // Initialize recommendation engine if not already done
+      if (!recommendationEngine) {
+        recommendationEngine = new window.RecommendationEngine();
+      }
+      
+      try {
+        // Parse the CSV content directly
+        Papa.parse(content, {
+          header: true,
+          dynamicTyping: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            console.log(`Liked songs parsed with ${results.data.length} songs`);
+            recommendationEngine.likedSongs = results.data;
+            
+            document.getElementById('liked-songs-status').textContent = 
+              `Liked songs loaded: ${recommendationEngine.likedSongs.length} songs`;
+            
+            // Enable recommendations button if both datasets are loaded
+            if (recommendationEngine.dataset) {
+              document.getElementById('generate-recommendations-btn').disabled = false;
+            }
+          },
+          error: (error) => {
+            console.error("Error parsing liked songs CSV:", error);
+            document.getElementById('liked-songs-status').textContent = 
+              `Error loading liked songs: ${error.message}`;
+          }
+        });
+      } catch (error) {
+        console.error("Error loading liked songs:", error);
+        document.getElementById('liked-songs-status').textContent = 
+          `Error loading liked songs: ${error.message}`;
+      }
+    };
+    reader.readAsText(file);
+  } catch (error) {
+    console.error("Error handling liked songs upload:", error);
+    document.getElementById('liked-songs-status').textContent = 
+      `Error: ${error.message}`;
+  }
+}
+
+// Function to use existing Spotify liked songs
+async function useSpotifyLikedSongs() {
+  try {
+    // Show loading indicator
+    document.getElementById('liked-songs-status').textContent = "Loading Spotify liked songs...";
+    
+    // Get user's saved tracks from Spotify
+    const tracks = await getUserSavedTracks(50);
+    console.log(`Retrieved ${tracks.length} tracks from Spotify API:`, tracks);
+    
+    // Initialize recommendation engine if not already done
+    if (!recommendationEngine) {
+      recommendationEngine = new window.RecommendationEngine();
+    }
+    
+    // Format tracks to match liked songs format (Name, Artist)
+    const formattedTracks = tracks.map(track => ({
+      Name: track.name,
+      Artist: track.artist
+    }));
+    
+    console.log("Formatted tracks for liked songs:", formattedTracks);
+    
+    // Set the liked songs directly
+    recommendationEngine.likedSongs = formattedTracks;
+    
+    document.getElementById('liked-songs-status').textContent = 
+      `Spotify liked songs loaded: ${recommendationEngine.likedSongs.length} songs`;
+    
+    // Enable recommendations button if both datasets are loaded
+    if (recommendationEngine.dataset) {
+      document.getElementById('generate-recommendations-btn').disabled = false;
+    }
+  } catch (error) {
+    console.error("Error loading Spotify liked songs:", error);
+    document.getElementById('liked-songs-status').textContent = 
+      `Error loading Spotify liked songs: ${error.message}`;
+  }
+}
+
+
+// Function to generate recommendations
+async function generateCSVRecommendations() {
+  try {
+    // Show loading indicator
+    document.getElementById('csv-recommendations-results').innerHTML = 
+      '<p class="loading">Generating recommendations...</p>';
+    
+    // Check if engine and data exist
+    if (!recommendationEngine) {
+      console.log("Creating recommendation engine");
+      recommendationEngine = new window.RecommendationEngine();
+    }
+    
+    if (!recommendationEngine.dataset || !recommendationEngine.likedSongs) {
+      console.error("Missing data:", {
+        dataset: Boolean(recommendationEngine.dataset),
+        likedSongs: Boolean(recommendationEngine.likedSongs)
+      });
+      throw new Error("Please load both a dataset and liked songs first");
+    }
+    
+    console.log("Starting recommendation generation with:", {
+      datasetSize: recommendationEngine.dataset.length,
+      likedSongsSize: recommendationEngine.likedSongs.length
+    });
+    
+    // Verify dataset has required properties
+    const sampleSong = recommendationEngine.dataset[0];
+    console.log("Sample song from dataset:", sampleSong);
+    
+    // Make sure required features exist in the dataset
+    const requiredFeatures = ['popularity', 'danceability', 'energy', 'acousticness', 'valence', 'tempo'];
+    const missingFeatures = requiredFeatures.filter(feature => 
+      !sampleSong.hasOwnProperty(feature) && !sampleSong.hasOwnProperty(`${feature}_standardized`)
+    );
+    
+    if (missingFeatures.length > 0) {
+      console.warn("Dataset is missing these features:", missingFeatures);
+      // If features are missing, add dummy values
+      recommendationEngine.dataset.forEach(song => {
+        missingFeatures.forEach(feature => {
+          song[feature] = Math.random() * 0.5 + 0.25; // Random value between 0.25 and 0.75
+        });
+      });
+      // Reprocess data with added features
+      recommendationEngine.preprocessData();
+    }
+    
+    // Verify liked songs have required properties
+    console.log("Sample liked song:", recommendationEngine.likedSongs[0]);
+    
+    // Force preprocessing before generating recommendations
+    console.log("Preprocessing data...");
+    recommendationEngine.preprocessData();
+    
+    // Generate recommendations
+    console.log("Calling recommendSongs method...");
+    const recommendations = recommendationEngine.recommendSongs(10);
+    console.log("Recommendations generated:", recommendations);
+    
+    if (!recommendations || recommendations.length === 0) {
+      throw new Error("No recommendations were generated");
+    }
+    
+    // Ensure recommendations have all required properties
+    const cleanedRecommendations = recommendations.map(rec => ({
+      name: rec.name || "Unknown Track",
+      artist: rec.artist || "Unknown Artist",
+      genre: rec.genre || "Unknown Genre",
+      score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
+      id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
+      albumCover: rec.albumCover || ''
+    }));
+    
+    console.log("Cleaned recommendations:", cleanedRecommendations);
+    
+    // Store the recommendation data for saving to playlist
+    lastCsvRecommendations = cleanedRecommendations;
+    
+    // Display recommendations
+    renderRecommendationsTemplate("csv-recommendations-results", {
+      recommendations: cleanedRecommendations
+    });
+    
+  } catch (error) {
+    console.error("Error generating recommendations:", error);
+    document.getElementById('csv-recommendations-results').innerHTML = 
+      `<div class="error-message">Error generating recommendations: ${error.message}</div>`;
+  }
+}
+
+// Function to save CSV recommendations to Spotify playlist
+async function saveCSVRecommendationsToSpotify() {
+  if (!lastCsvRecommendations || lastCsvRecommendations.length === 0) {
+    alert("Please generate recommendations first");
+    return;
+  }
+  
+  try {
+    // Show loading indicator
+    const saveButton = document.querySelector('#csv-recommendations-container .save-spotify-btn');
+    if (saveButton) {
+      saveButton.textContent = "Saving...";
+      saveButton.disabled = true;
+    }
+    
+    // Convert local recommendations to Spotify format if needed
+    const trackUris = [];
+    const tracksToFind = [];
+    
+    // Separate tracks with Spotify IDs from those that need to be searched
+    lastCsvRecommendations.forEach(track => {
+      if (track.id && !track.id.startsWith('local-')) {
+        trackUris.push(`spotify:track:${track.id}`);
+      } else {
+        tracksToFind.push({
+          name: track.name,
+          artist: track.artist
+        });
+      }
+    });
+    
+    // Search for tracks that don't have IDs
+    if (tracksToFind.length > 0) {
+      for (const track of tracksToFind) {
+        try {
+          // Search Spotify for the track
+          const query = `${track.name} artist:${track.artist}`;
+          const searchResults = await searchSpotify(query, 'track', 1);
+          
+          if (searchResults && searchResults.length > 0) {
+            trackUris.push(`spotify:track:${searchResults[0].id}`);
+          } else {
+            console.warn(`Could not find track on Spotify: ${track.name} by ${track.artist}`);
+          }
+        } catch (error) {
+          console.error(`Error searching for track ${track.name}:`, error);
+        }
+      }
+    }
+    
+    // Create and save playlist
+    const playlistName = "CSV Recommendations by Spotify Genie";
+    const result = await savePlaylistToSpotify(playlistName, trackUris);
+    
+    // Update UI based on result
+    if (result.success) {
+      // Create success message with link
+      const recommendationsResults = document.getElementById('csv-recommendations-results');
+      const successMessage = document.createElement('div');
+      successMessage.className = 'success-message';
+      successMessage.innerHTML = `
+        <p>Playlist "${result.playlistName}" saved successfully!</p>
+        <a href="${result.playlistUrl}" target="_blank" class="spotify-button">
+          <i class="fab fa-spotify"></i> Open in Spotify
+        </a>
+      `;
+      
+      // Add success message to the container
+      recommendationsResults.appendChild(successMessage);
+      
+      // Update button
+      if (saveButton) {
+        saveButton.textContent = "Saved to Spotify ✓";
+        saveButton.disabled = true;
+      }
+    } else {
+      // Show error
+      alert(`Failed to save playlist: ${result.error}`);
+      
+      // Reset button
+      if (saveButton) {
+        saveButton.textContent = "Save to Spotify";
+        saveButton.disabled = false;
+      }
+    }
+  } catch (error) {
+    console.error("Error saving recommendations to Spotify:", error);
+    alert(`Error saving recommendations: ${error.message}`);
+    
+    // Reset button
+    const saveButton = document.querySelector('#csv-recommendations-container .save-spotify-btn');
+    if (saveButton) {
+      saveButton.textContent = "Save to Spotify";
+      saveButton.disabled = false;
+    }
+  }
+}
+
+// Global variable to store last generated CSV recommendations
+let lastCsvRecommendations = null;
+
+// Add these functions to the window object for event handlers
+window.handleDatasetUpload = handleDatasetUpload;
+window.handleLikedSongsUpload = handleLikedSongsUpload;
+window.useSpotifyLikedSongs = useSpotifyLikedSongs;
+window.generateCSVRecommendations = generateCSVRecommendations;
+window.saveCSVRecommendationsToSpotify = saveCSVRecommendationsToSpotify;
 // Make these functions available to inline event handlers
 window.loginWithSpotifyClick = loginWithSpotifyClick;
 window.logoutClick = logoutClick;
 window.refreshTokenClick = refreshTokenClick;
 window.handleSearch = handleSearch;
 window.handleGeneratePlaylist = handleGeneratePlaylist;
+window.exportLikedSongsToCSV = exportLikedSongsToCSV;
