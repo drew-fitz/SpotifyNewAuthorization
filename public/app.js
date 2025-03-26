@@ -46,6 +46,7 @@ const code = args.get('code');
 
 
 // MAIN APP INITIALIZATION
+// Updated initApp function with better error handling and debugging
 async function initApp() {
   console.log("==== APP INITIALIZATION STARTED ====");
  
@@ -67,76 +68,55 @@ async function initApp() {
     }
   }
 
-
-   // Check if we're logged in
-   if (currentToken.access_token) {
+  // Check if we're logged in
+  if (currentToken.access_token) {
     console.log("Access token found in localStorage");
    
     try {
       // Render user profile
       const userData = await getUserData();
-      console.log("User data fetched successfully");
+      console.log("User data fetched successfully:", userData);
       renderTemplate("main", "logged-in-template", userData);
       renderTemplate("oauth", "oauth-template", currentToken);
      
-      // Now let's manually create and append the new components
-      console.log("Creating new component containers");
+      // Create containers
       createContainers();
      
       // Render search form
-      console.log("Rendering search form");
       renderTemplate("search-form-container", "search-form-template");
      
       // Render playlist generator
-      console.log("Rendering playlist generator");
       renderTemplate("playlist-generator-container", "playlist-generator-template");
-     
-      // also render CSV recommendations container
-      console.log("Rendering CSV recommendations container");
+      
+      // Render CSV recommendations container
       renderTemplate("main", "csv-recommendations-container-template");
 
-      // Fetch and render saved tracks
-      console.log("Fetching saved tracks");
+      // Fetch and render saved tracks with better error handling
+      console.log("Fetching saved tracks...");
       try {
-        // First make sure the container exists
-        if (!document.getElementById("tracks-container")) {
-          console.error("tracks-container element not found");
-          createContainers(); // Try creating containers again
-        }
-        
-        // Fetch tracks with a clearer log
-        console.log("Calling getUserSavedTracks()...");
         const tracks = await getUserSavedTracks();
-        console.log(`Fetched ${tracks.length} saved tracks`);
+        console.log(`Successfully fetched ${tracks.length} saved tracks`);
         
-        if (tracks && tracks.length > 0) {
-          console.log(`Successfully fetched ${tracks.length} saved tracks`);
-          console.log("Rendering tracks template with data:", { tracks });
-          renderTracksTemplate("tracks-container", tracks);
-        } else {
-          console.log("No tracks returned from getUserSavedTracks");
-          document.getElementById("tracks-container").innerHTML = 
-            `<div class="component-container">
-               <h3>Your Saved Tracks</h3>
-               <p>You don't have any saved tracks yet. Save some tracks on Spotify and check back!</p>
-               <button onclick="exportLikedSongsToCSV()">Download Liked Songs as CSV</button>
-             </div>`;
+        // Make sure the tracks container exists
+        if (!document.getElementById("tracks-container")) {
+          console.warn("tracks-container not found, creating it");
+          createContainers();
         }
+        
+        // Render tracks
+        renderTracksTemplate("tracks-container", tracks);
       } catch (error) {
-        console.error("Detailed error fetching saved tracks:", error);
+        console.error("Error fetching saved tracks:", error);
+        
         if (document.getElementById("tracks-container")) {
-          document.getElementById("tracks-container").innerHTML =
-            `<div class="error-message">Error loading saved tracks: ${error.message}</div>
-             <button onclick="location.reload()">Retry</button>`;
-        } else {
-          console.error("tracks-container element not found for error display");
+          document.getElementById("tracks-container").innerHTML = `
+            <div class="component-container">
+              <h3>Your Saved Tracks</h3>
+              <div class="error-message">Error loading tracks: ${error.message}</div>
+              <button onclick="location.reload()">Retry</button>
+            </div>`;
         }
       }
-      
-      // Also render the CSV recommendations container
-      console.log("Rendering CSV recommendations container");
-      renderTemplate("main", "csv-recommendations-container-template");
-      
     } catch (error) {
       console.error("Error initializing logged-in state:", error);
     }
@@ -148,6 +128,73 @@ async function initApp() {
   console.log("==== APP INITIALIZATION COMPLETED ====");
 }
 
+// Improved createContainers function to log more information
+function createContainers() {
+  const containers = [
+    "search-form-container",
+    "playlist-generator-container",
+    "tracks-container"
+  ];
+ 
+  containers.forEach(id => {
+    const existingContainer = document.getElementById(id);
+    if (!existingContainer) {
+      console.log(`Creating missing container: ${id}`);
+      const container = document.createElement("div");
+      container.id = id;
+      container.className = "component-container";
+      
+      // Find where to append the container
+      const main = document.getElementById("main");
+      if (main) {
+        main.appendChild(container);
+        console.log(`Added ${id} to main element`);
+      } else {
+        document.body.appendChild(container);
+        console.log(`Added ${id} to body (main element not found)`);
+      }
+    } else {
+      console.log(`Container already exists: ${id}`);
+    }
+  });
+}
+
+// Updated handleSearch with better debugging and error handling
+async function handleSearch(event) {
+  event.preventDefault();
+  const searchInput = document.getElementById('search-input');
+ 
+  if (!searchInput) {
+    console.error("Search input element not found");
+    return;
+  }
+ 
+  const query = searchInput.value.trim();
+  console.log(`Executing search for: "${query}"`);
+ 
+  if (!query) {
+    console.log("Empty search query, not sending request");
+    document.getElementById("search-results").innerHTML = 
+      '<div class="info-message">Please enter a search term</div>';
+    return;
+  }
+  
+  try {
+    // Show loading indicator
+    document.getElementById("search-results").innerHTML = 
+      '<div class="loading-message">Searching...</div>';
+    
+    const searchResults = await searchSpotify(query);
+    console.log(`Search returned ${searchResults.length} results`);
+    
+    // Render search results
+    renderSearchResultsTemplate("search-results", { searchResults });
+  } catch (error) {
+    console.error("Search error:", error);
+    document.getElementById("search-results").innerHTML =
+      `<div class="error-message">Search error: ${error.message}</div>`;
+  }
+}
 
 function exportLikedSongsToCSV() {
   getUserSavedTracks(50).then(tracks => {
@@ -173,27 +220,6 @@ function exportLikedSongsToCSV() {
   }).catch(error => {
       console.error("Error exporting liked songs:", error);
       alert("Failed to export liked songs.");
-  });
-}
-
-// Create container elements if they don't exist
-function createContainers() {
-  const containers = [
-    "search-form-container",
-    "playlist-generator-container",
-    "tracks-container"
-  ];
- 
-  containers.forEach(id => {
-    if (!document.getElementById(id)) {
-      console.log(`Creating missing container: ${id}`);
-      const container = document.createElement("div");
-      container.id = id;
-      container.className = "component-container";
-      document.body.appendChild(container);
-    } else {
-      console.log(`Container already exists: ${id}`);
-    }
   });
 }
 
@@ -301,6 +327,7 @@ async function getUserData() {
 
 async function getUserSavedTracks(limit = 20) {
   try {
+    console.log(`Fetching up to ${limit} saved tracks...`);
     const response = await fetch(`https://api.spotify.com/v1/me/tracks?limit=${limit}`, {
       method: 'GET',
       headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
@@ -312,6 +339,7 @@ async function getUserSavedTracks(limit = 20) {
     }
 
     const data = await response.json();
+    console.log("Saved tracks API response:", data);
     
     // Validate the response structure
     if (!data.items || !Array.isArray(data.items)) {
@@ -319,39 +347,245 @@ async function getUserSavedTracks(limit = 20) {
       throw new Error("Unexpected API response format");
     }
     
-    return data.items.map(item => ({
+    // Map the response to a simplified format
+    const tracks = data.items.map(item => ({
       name: item.track.name,
-      artist: item.track.artists[0].name,
+      artist: item.track.artists.map(a => a.name).join(', '),
       id: item.track.id,
       albumCover: item.track.album.images[0]?.url || ''
     }));
+    
+    console.log(`Successfully processed ${tracks.length} tracks`);
+    return tracks;
   } catch (error) {
     console.error("Error in getUserSavedTracks:", error);
     throw error; // Re-throw to be caught by the caller
   }
 }
 
+// Fix for getUserSavedTracks function to properly handle API response
+async function getUserSavedTracks(limit = 20) {
+  try {
+    console.log(`Fetching up to ${limit} saved tracks...`);
+    const response = await fetch(`https://api.spotify.com/v1/me/tracks?limit=${limit}`, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`API error: ${errorData.error ? errorData.error.message : response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log("Saved tracks API response:", data);
+    
+    // Validate the response structure
+    if (!data.items || !Array.isArray(data.items)) {
+      console.error("Unexpected API response format:", data);
+      throw new Error("Unexpected API response format");
+    }
+    
+    // Map the response to a simplified format
+    const tracks = data.items.map(item => ({
+      name: item.track.name,
+      artist: item.track.artists.map(a => a.name).join(', '),
+      id: item.track.id,
+      albumCover: item.track.album.images[0]?.url || ''
+    }));
+    
+    console.log(`Successfully processed ${tracks.length} tracks`);
+    return tracks;
+  } catch (error) {
+    console.error("Error in getUserSavedTracks:", error);
+    throw error; // Re-throw to be caught by the caller
+  }
+}
+
+// Fix for searchSpotify function to properly handle API response
 async function searchSpotify(query, type = 'track', limit = 10) {
   if (!query) return [];
 
+  try {
+    console.log(`Searching for "${query}" (type: ${type}, limit: ${limit})`);
+    const response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=${limit}`, {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+    });
 
-  const response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=${type}&limit=${limit}`, {
-    method: 'GET',
-    headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
-  });
-
-
-  const data = await response.json();
-  if (data.error) {
-    throw new Error(`Search error: ${data.error.message || 'Unknown error'}`);
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Search error: ${errorData.error ? errorData.error.message : response.statusText}`);
+    }
+    
+    const data = await response.json();
+    console.log("Search API response:", data);
+    
+    if (!data.tracks || !data.tracks.items) {
+      console.error("Unexpected search response format:", data);
+      return [];
+    }
+    
+    // Map the response to a simplified format
+    const tracks = data.tracks.items.map(item => ({
+      name: item.name,
+      artist: item.artists.map(a => a.name).join(', '),
+      id: item.id,
+      albumCover: item.album.images[0]?.url || '',
+      uri: item.uri
+    }));
+    
+    console.log(`Search returned ${tracks.length} results`);
+    return tracks;
+  } catch (error) {
+    console.error("Error in searchSpotify:", error);
+    throw error;
   }
- 
-  return data.tracks.items.map(item => ({
-    name: item.name,
-    artist: item.artists[0].name,
-    id: item.id,
-    albumCover: item.album.images[0]?.url || ''
-  }));
+}
+
+// New function to render tracks properly
+function renderTracksTemplate(targetId, tracks) {
+  console.log(`Rendering ${tracks.length} tracks to ${targetId}`);
+  const targetElement = document.getElementById(targetId);
+  
+  if (!targetElement) {
+    console.error(`Target element not found: ${targetId}`);
+    return;
+  }
+  
+  // Create container
+  const container = document.createElement('div');
+  container.className = 'component-container';
+  
+  // Add heading
+  const heading = document.createElement('h3');
+  heading.textContent = 'Your Saved Tracks';
+  container.appendChild(heading);
+  
+  if (!tracks || tracks.length === 0) {
+    const noTracksMsg = document.createElement('p');
+    noTracksMsg.textContent = "You don't have any saved tracks yet.";
+    container.appendChild(noTracksMsg);
+  } else {
+    // Create tracks list
+    const tracksList = document.createElement('div');
+    tracksList.className = 'track-list';
+    
+    tracks.forEach(track => {
+      const trackItem = document.createElement('div');
+      trackItem.className = 'track-item';
+      
+      // Create album cover if available
+      if (track.albumCover) {
+        const albumImg = document.createElement('img');
+        albumImg.src = track.albumCover;
+        albumImg.alt = `${track.name} album art`;
+        albumImg.className = 'album-cover';
+        trackItem.appendChild(albumImg);
+      }
+      
+      // Create track info container
+      const trackInfo = document.createElement('div');
+      trackInfo.className = 'track-info';
+      
+      // Add track name
+      const trackName = document.createElement('div');
+      trackName.className = 'track-name';
+      trackName.textContent = track.name;
+      trackInfo.appendChild(trackName);
+      
+      // Add artist name
+      const artistName = document.createElement('div');
+      artistName.className = 'track-artist';
+      artistName.textContent = track.artist;
+      trackInfo.appendChild(artistName);
+      
+      trackItem.appendChild(trackInfo);
+      tracksList.appendChild(trackItem);
+    });
+    
+    container.appendChild(tracksList);
+    
+    // Add export button
+    const exportButton = document.createElement('button');
+    exportButton.textContent = 'Download Liked Songs as CSV';
+    exportButton.onclick = exportLikedSongsToCSV;
+    exportButton.className = 'spotify-button';
+    container.appendChild(exportButton);
+  }
+  
+  // Clear and append to target
+  targetElement.innerHTML = '';
+  targetElement.appendChild(container);
+}
+
+// New function to render search results
+function renderSearchResultsTemplate(targetId, { searchResults }) {
+  console.log(`Rendering ${searchResults.length} search results to ${targetId}`);
+  const targetElement = document.getElementById(targetId);
+  
+  if (!targetElement) {
+    console.error(`Target element not found: ${targetId}`);
+    return;
+  }
+  
+  // Create container
+  const container = document.createElement('div');
+  container.className = 'search-results-container';
+  
+  // Add heading
+  const heading = document.createElement('h3');
+  heading.textContent = 'Search Results';
+  container.appendChild(heading);
+  
+  if (!searchResults || searchResults.length === 0) {
+    const noResultsMsg = document.createElement('p');
+    noResultsMsg.textContent = "No matching tracks found.";
+    container.appendChild(noResultsMsg);
+  } else {
+    // Create results list
+    const resultsList = document.createElement('div');
+    resultsList.className = 'track-list';
+    
+    searchResults.forEach(track => {
+      const trackItem = document.createElement('div');
+      trackItem.className = 'track-item';
+      
+      // Create album cover if available
+      if (track.albumCover) {
+        const albumImg = document.createElement('img');
+        albumImg.src = track.albumCover;
+        albumImg.alt = `${track.name} album art`;
+        albumImg.className = 'album-cover';
+        trackItem.appendChild(albumImg);
+      }
+      
+      // Create track info container
+      const trackInfo = document.createElement('div');
+      trackInfo.className = 'track-info';
+      
+      // Add track name
+      const trackName = document.createElement('div');
+      trackName.className = 'track-name';
+      trackName.textContent = track.name;
+      trackInfo.appendChild(trackName);
+      
+      // Add artist name
+      const artistName = document.createElement('div');
+      artistName.className = 'track-artist';
+      artistName.textContent = track.artist;
+      trackInfo.appendChild(artistName);
+      
+      trackItem.appendChild(trackInfo);
+      resultsList.appendChild(trackItem);
+    });
+    
+    container.appendChild(resultsList);
+  }
+  
+  // Clear and append to target
+  targetElement.innerHTML = '';
+  targetElement.appendChild(container);
 }
 
 // Enhanced generatePlaylistByType function
@@ -1567,22 +1801,32 @@ async function handleSearch(event) {
     return;
   }
  
-  const query = searchInput.value;
-  console.log(`Search query: "${query}"`);
+  const query = searchInput.value.trim();
+  console.log(`Executing search for: "${query}"`);
  
-  if (query) {
-    try {
-      const searchResults = await searchSpotify(query);
-      console.log(`Found ${searchResults.length} results`);
-      renderSearchResultsTemplate("search-results", { searchResults });
-    } catch (error) {
-      console.error("Search error:", error);
-      document.getElementById("search-results").innerHTML =
-        `<div class="error-message">Search error: ${error.message}</div>`;
-    }
+  if (!query) {
+    console.log("Empty search query, not sending request");
+    document.getElementById("search-results").innerHTML = 
+      '<div class="info-message">Please enter a search term</div>';
+    return;
+  }
+  
+  try {
+    // Show loading indicator
+    document.getElementById("search-results").innerHTML = 
+      '<div class="loading-message">Searching...</div>';
+    
+    const searchResults = await searchSpotify(query);
+    console.log(`Search returned ${searchResults.length} results`);
+    
+    // Render search results
+    renderSearchResultsTemplate("search-results", { searchResults });
+  } catch (error) {
+    console.error("Search error:", error);
+    document.getElementById("search-results").innerHTML =
+      `<div class="error-message">Search error: ${error.message}</div>`;
   }
 }
-
 
 // TEMPLATE RENDERING
 function renderTemplate(targetId, templateId, data = null) {
