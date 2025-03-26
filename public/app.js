@@ -499,7 +499,7 @@ function addStyles() {
       margin-bottom: 10px;
       padding: 10px;
       border-radius: 4px;
-      background-color: #f5f5f5;
+      background-color: #333;
     }
     
     .track-info {
@@ -2321,7 +2321,7 @@ async function saveCSVRecommendationsToSpotify() {
     }
     
     // Create and save playlist
-    const playlistName = "CSV Recommendations by Spotify Genie";
+    const playlistName = "Spotify Genie Recs";
     const result = await savePlaylistToSpotify(playlistName, trackUris);
     
     // Update UI based on result
