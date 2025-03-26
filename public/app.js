@@ -78,7 +78,6 @@ async function initApp() {
       const userData = await getUserData();
       console.log("User data fetched successfully:", userData);
       renderTemplate("main", "logged-in-template", userData);
-      renderTemplate("oauth", "oauth-template", currentToken);
      
       // Create containers
       createContainers();
@@ -1798,7 +1797,6 @@ async function refreshTokenClick() {
   try {
     const token = await refreshToken();
     currentToken.save(token);
-    renderTemplate("oauth", "oauth-template", currentToken);
     alert("Token refreshed successfully!");
   } catch (error) {
     console.error("Error refreshing token:", error);

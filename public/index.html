@@ -81,7 +81,6 @@
 <body>
   <!-- Core containers -->
   <div id="main" class="component-container"></div>
-  <div id="oauth" class="component-container"></div>
  
   <!-- New feature containers -->
   <div id="search-form-container" class="component-container"></div>
@@ -118,24 +117,6 @@
 
     <button onclick="refreshTokenClick()">Refresh Token</button>
     <button onclick="logoutClick()">Log out</button>
-  </template>
-
-  <template id="oauth-template">
-    <h2>oAuth info</h2>
-    <table>
-      <tr>
-        <td>Access token</td>
-        <td data-bind="access_token"></td>
-      </tr>
-      <tr>
-        <td>Refresh token</td>
-        <td data-bind="refresh_token"></td>
-      </tr>
-      <tr>
-        <td>Expiration at</td>
-        <td data-bind="expires">${getExpirationDate(expires_in)}</td>
-      </tr>
-    </table>
   </template>
 
   <template id="search-form-template">
