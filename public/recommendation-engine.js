@@ -300,7 +300,7 @@ async loadDataset(fileOrData) {
           // Add genre bonus (0.2 for exact genre match)
           let genreBonus = 0;
           if (likedSongData.track_genre && song.track_genre && likedSongData.track_genre === song.track_genre) {
-            genreBonus = 0.2;
+            genreBonus = 0.1;
           }
           
           // Add to recommendations with final score

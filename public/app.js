@@ -1437,17 +1437,17 @@ async function generateCSVRecommendations() {
     console.log("Preprocessing data...");
     recommendationEngine.preprocessData();
     
-    // Generate recommendations
-    console.log("Calling recommendSongs method...");
-    const recommendations = recommendationEngine.recommendSongs(10);
-    console.log("Recommendations generated:", recommendations);
+    // Generate 50 recommendations instead of 10
+    console.log("Calling recommendSongs method to get 50 recommendations...");
+    const allRecommendations = recommendationEngine.recommendSongs(50);
+    console.log(`Generated ${allRecommendations.length} total recommendations`);
     
-    if (!recommendations || recommendations.length === 0) {
+    if (!allRecommendations || allRecommendations.length === 0) {
       throw new Error("No recommendations were generated");
     }
     
     // Ensure recommendations have all required properties
-    const cleanedRecommendations = recommendations.map(rec => ({
+    const cleanedRecommendations = allRecommendations.map(rec => ({
       name: rec.name || "Unknown Track",
       artist: rec.artist || "Unknown Artist",
       genre: rec.genre || "Unknown Genre",
@@ -1456,14 +1456,20 @@ async function generateCSVRecommendations() {
       albumCover: rec.albumCover || ''
     }));
     
-    console.log("Cleaned recommendations:", cleanedRecommendations);
-    
-    // Store the recommendation data for saving to playlist
+    // Store all 50 recommendations for potential use in playlist creation
     lastCsvRecommendations = cleanedRecommendations;
+    console.log(`Stored ${lastCsvRecommendations.length} cleaned recommendations`);
     
-    // Display recommendations
+    // Randomly select 10 from the 50 recommendations to display
+    const displayCount = Math.min(10, cleanedRecommendations.length);
+    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
+    const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
+    
+    console.log(`Randomly selected ${selectedRecommendations.length} recommendations to display`);
+    
+    // Display only the randomly selected recommendations
     renderRecommendationsTemplate("csv-recommendations-results", {
-      recommendations: cleanedRecommendations
+      recommendations: selectedRecommendations
     });
     
   } catch (error) {
@@ -1473,7 +1479,6 @@ async function generateCSVRecommendations() {
   }
 }
 
-// Template rendering function for song recommendations
 // Template rendering function for song recommendations
 function renderRecommendationsTemplate(targetId, { recommendations }) {
   const targetElement = document.getElementById(targetId);
