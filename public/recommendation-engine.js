@@ -22,26 +22,7 @@ class RecommendationEngine {
 // Fixed loadDataset method - supports both file paths and direct data
 async loadDataset(fileOrData) {
     try {
-      // If fileOrData is already an array, it's direct data
-      if (Array.isArray(fileOrData)) {
-        console.log(`Using directly provided dataset with ${fileOrData.length} songs`);
-        this.dataset = fileOrData;
-        this.preprocessData();
-        return this.dataset;
-      }
-      
-      // Otherwise, try to load from file
-      let csvData;
-      try {
-        csvData = await window.fs.readFile(fileOrData, { encoding: 'utf8' });
-      } catch (error) {
-        console.error("Error reading file, using localStorage as fallback:", error);
-        // Try to get from localStorage as fallback
-        csvData = localStorage.getItem('spotify_genie_dataset');
-        if (!csvData) {
-          throw new Error("Could not load dataset from file or localStorage");
-        }
-      }
+      const csvData = await window.fs.readFile('dataset.csv', { encoding: 'utf8' });
       
       return new Promise((resolve, reject) => {
         Papa.parse(csvData, {
