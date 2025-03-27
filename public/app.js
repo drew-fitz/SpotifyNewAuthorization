@@ -87,6 +87,7 @@ async function initApp() {
       renderTemplate("playlist-generator-container", "playlist-generator-template");
       
       // Render CSV recommendations container
+      renderTemplate("main", "logged-in-template", userData);
       renderTemplate("main", "csv-recommendations-container-template");
 
       // Fetch and render saved tracks with better error handling
@@ -392,6 +393,7 @@ async function searchSpotify(query, type = 'track', limit = 10) {
   }
 }
 
+// renderTracksTemplate function to ensure the export button is always added
 function renderTracksTemplate(targetId, tracks) {
   console.log(`Rendering ${tracks.length} tracks to ${targetId}`);
   const targetElement = document.getElementById(targetId);
@@ -666,7 +668,390 @@ function getPlaylistDisplayName(type) {
   return typeMap[type] || type.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// Function to handle the "Save to Spotify" button click
+async function handleSaveToSpotify() {
+  if (!lastGeneratedPlaylist || !lastGeneratedPlaylist.tracks || lastGeneratedPlaylist.tracks.length === 0) {
+    alert("Please generate a playlist first before saving to Spotify.");
+    return;
+  }
+  
+  try {
+    // Show loading indicator
+    const saveButton = document.querySelector('.save-spotify-btn');
+    if (saveButton) {
+      saveButton.textContent = "Saving...";
+      saveButton.disabled = true;
+    }
+    
+    // Format playlist name based on type
+    const displayName = getPlaylistDisplayName(lastGeneratedPlaylist.type);
+    const playlistName = `${displayName} Playlist by Spotify Genie`;
+    
+    // Format track URIs - we need to convert IDs to full Spotify URIs
+    const trackUris = lastGeneratedPlaylist.tracks.map(track => `spotify:track:${track.id}`);
+    
+    // Save the playlist
+    const result = await savePlaylistToSpotify(playlistName, trackUris);
+    
+    // Update UI based on result
+    if (result.success) {
+      // Create success message with link
+      const playlistResultsDiv = document.getElementById('playlist-results');
+      const successMessage = document.createElement('div');
+      successMessage.className = 'success-message';
+      successMessage.innerHTML = `
+        <p>Playlist "${result.playlistName}" saved successfully!</p>
+        <a href="${result.playlistUrl}" target="_blank" class="spotify-button">
+          <i class="fab fa-spotify"></i> Open in Spotify
+        </a>
+      `;
+      
+      // Insert after the track list
+      const trackList = playlistResultsDiv.querySelector('.track-list');
+      if (trackList) {
+        trackList.after(successMessage);
+      } else {
+        playlistResultsDiv.appendChild(successMessage);
+      }
+      
+      // Update button
+      if (saveButton) {
+        saveButton.textContent = "Saved to Spotify ✓";
+        saveButton.disabled = true;
+      }
+    } else {
+      // Show error
+      alert(`Failed to save playlist: ${result.error}`);
+      
+      // Reset button
+      if (saveButton) {
+        saveButton.textContent = "Save to Spotify";
+        saveButton.disabled = false;
+      }
+    }
+  } catch (error) {
+    console.error("Error in handleSaveToSpotify:", error);
+    alert(`Error saving playlist: ${error.message}`);
+    
+    // Reset button
+    const saveButton = document.querySelector('.save-spotify-btn');
+    if (saveButton) {
+      saveButton.textContent = "Save to Spotify";
+      saveButton.disabled = false;
+    }
+  }
+}
 
+// Update the playlist generation function to store the last playlist
+async function handleGeneratePlaylist(event) {
+  event.preventDefault();
+  const selectedType = document.querySelector('input[name="playlist-type"]:checked');
+ 
+  if (!selectedType) {
+    console.error("No playlist type selected");
+    return;
+  }
+ 
+  const playlistType = selectedType.value;
+  console.log(`Generating playlist of type: ${playlistType}`);
+ 
+  try {
+    // Show loading indicator
+    const submitButton = document.querySelector('#playlist-form button[type="submit"]');
+    if (submitButton) {
+      submitButton.textContent = "Generating...";
+      submitButton.disabled = true;
+    }
+    
+    // For demo purposes, we'll use the same generation method for all types
+    // In a real implementation, we would customize the generation based on the type
+    const baseType = playlistType.split('-')[0];
+    
+    // Run the playlist generation - fallback to 'mood' for all new types as specified
+    const playlistTracks = await generatePlaylistByType(baseType === 'mood' ? 'mood' : 
+                                                      (baseType === 'past' ? 'throwback' : 'mood'));
+    
+    console.log(`Generated playlist with ${playlistTracks.length} tracks`);
+    
+    // Store the generated playlist
+    lastGeneratedPlaylist = {
+      type: playlistType,
+      tracks: playlistTracks,
+      generatedAt: new Date()
+    };
+    
+    // Render the playlist to the UI
+    renderPlaylistResultsTemplate("playlist-results", {
+      playlistTracks,
+      playlistType
+    });
+    
+    // Reset button
+    if (submitButton) {
+      submitButton.textContent = "Generate Playlist";
+      submitButton.disabled = false;
+    }
+  } catch (error) {
+    console.error("Error generating playlist:", error);
+    document.getElementById("playlist-results").innerHTML =
+      `<div class="error-message">Error generating playlist: ${error.message}</div>`;
+      
+    // Reset button
+    const submitButton = document.querySelector('#playlist-form button[type="submit"]');
+    if (submitButton) {
+      submitButton.textContent = "Generate Playlist";
+      submitButton.disabled = false;
+    }
+  }
+}
+
+// Helper function to process tracks based on playlist type
+function processTracksForPlaylist(trackItems, playlistType) {
+  console.log(`Processing ${trackItems.length} tracks for ${playlistType} playlist`);
+  
+  // Map tracks to a common format with audio features
+  const tracks = trackItems.map(item => {
+    // Handle both saved tracks format and top tracks format
+    const track = item.track || item;
+    return {
+      name: track.name,
+      artist: track.artists.map(a => a.name).join(', '),
+      id: track.id,
+      albumCover: track.album && track.album.images && track.album.images.length > 0 
+        ? track.album.images[0].url 
+        : '',
+      popularity: track.popularity || 50,
+      // We don't have audio features, but we'll use other properties
+      album: track.album ? {
+        name: track.album.name,
+        release_date: track.album.release_date || '2020'
+      } : null
+    };
+  });
+  
+  // Filter and sort based on playlist type
+  let selectedTracks = [];
+  
+  if (playlistType === 'mood') {
+    // For mood, prioritize popular tracks (happy mood)
+    selectedTracks = tracks
+      .sort((a, b) => b.popularity - a.popularity)
+      .slice(0, 10);
+    
+  } else if (playlistType === 'genre') {
+    // For genre, try to get a mix of artists
+    // Group by artist first
+    const artistGroups = {};
+    tracks.forEach(track => {
+      const mainArtist = track.artist.split(',')[0].trim();
+      if (!artistGroups[mainArtist]) {
+        artistGroups[mainArtist] = [];
+      }
+      artistGroups[mainArtist].push(track);
+    });
+    
+    // Take one track from each artist until we have 10
+    const artists = Object.keys(artistGroups);
+    for (let i = 0; i < artists.length && selectedTracks.length < 10; i++) {
+      if (artistGroups[artists[i]].length > 0) {
+        selectedTracks.push(artistGroups[artists[i]][0]);
+      }
+    }
+    
+    // If we still need more tracks, add remaining popular ones
+    if (selectedTracks.length < 10) {
+      const remainingTracks = tracks
+        .filter(track => !selectedTracks.includes(track))
+        .sort((a, b) => b.popularity - a.popularity);
+      
+      selectedTracks = selectedTracks.concat(
+        remainingTracks.slice(0, 10 - selectedTracks.length)
+      );
+    }
+    
+  } else if (playlistType === 'throwback') {
+    // For throwback, prioritize older releases if we have release dates
+    selectedTracks = tracks
+      .sort((a, b) => {
+        // If we have release dates, sort by those
+        if (a.album && b.album && a.album.release_date && b.album.release_date) {
+          return a.album.release_date.localeCompare(b.album.release_date);
+        }
+        // Default to random for mix
+        return Math.random() - 0.5;
+      })
+      .slice(0, 10);
+  }
+  
+  // Ensure we have tracks
+  if (selectedTracks.length === 0) {
+    // Just take a random selection
+    selectedTracks = tracks
+      .sort(() => Math.random() - 0.5)
+      .slice(0, Math.min(10, tracks.length));
+  }
+  
+  // Ensure we don't exceed 10 tracks
+  selectedTracks = selectedTracks.slice(0, 10);
+  
+  console.log(`Generated playlist with ${selectedTracks.length} tracks`);
+  return selectedTracks;
+}
+
+// Function to save the generated playlist to Spotify
+async function savePlaylistToSpotify(playlistName, trackUris) {
+  try {
+    console.log(`Saving playlist "${playlistName}" with ${trackUris.length} tracks to Spotify`);
+    
+    // Step 1: Create a new playlist
+    const userResponse = await fetch('https://api.spotify.com/v1/me', {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + currentToken.access_token }
+    });
+    
+    if (!userResponse.ok) {
+      throw new Error(`Failed to get user profile: ${userResponse.status}`);
+    }
+    
+    const userData = await userResponse.json();
+    const userId = userData.id;
+    
+    console.log(`Creating playlist for user: ${userId}`);
+    
+    const createResponse = await fetch(`https://api.spotify.com/v1/users/${userId}/playlists`, {
+      method: 'POST',
+      headers: { 
+        'Authorization': 'Bearer ' + currentToken.access_token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: playlistName,
+        description: `Generated by Spotify Genie on ${new Date().toLocaleDateString()}`,
+        public: false
+      })
+    });
+    
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
+      throw new Error(`Failed to create playlist: ${createResponse.status} - ${errorText}`);
+    }
+    
+    const playlistData = await createResponse.json();
+    const playlistId = playlistData.id;
+    
+    console.log(`Playlist created with ID: ${playlistId}`);
+    
+    // Step 2: Add tracks to the playlist
+    const addTracksResponse = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`, {
+      method: 'POST',
+      headers: { 
+        'Authorization': 'Bearer ' + currentToken.access_token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        uris: trackUris
+      })
+    });
+    
+    if (!addTracksResponse.ok) {
+      const errorText = await addTracksResponse.text();
+      throw new Error(`Failed to add tracks to playlist: ${addTracksResponse.status} - ${errorText}`);
+    }
+    
+    const addTracksData = await addTracksResponse.json();
+    console.log(`Successfully added ${addTracksData.snapshot_id ? 'tracks to' : 'no tracks to'} playlist`);
+    
+    return {
+      success: true,
+      playlistId: playlistId,
+      playlistUrl: playlistData.external_urls.spotify,
+      playlistName: playlistName
+    };
+    
+  } catch (error) {
+    console.error("Error saving playlist to Spotify:", error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+// Update handleGeneratePlaylist to store the last generated playlist
+let lastGeneratedPlaylist = null;
+
+// Function to handle the "Save to Spotify" button click
+async function handleSaveToSpotify() {
+  if (!lastGeneratedPlaylist || !lastGeneratedPlaylist.tracks || lastGeneratedPlaylist.tracks.length === 0) {
+    alert("Please generate a playlist first before saving to Spotify.");
+    return;
+  }
+  
+  try {
+    // Show loading indicator
+    const saveButton = document.querySelector('.save-spotify-btn');
+    if (saveButton) {
+      saveButton.textContent = "Saving...";
+      saveButton.disabled = true;
+    }
+    
+    // Format playlist name based on type
+    const playlistName = `${lastGeneratedPlaylist.type.charAt(0).toUpperCase() + lastGeneratedPlaylist.type.slice(1)} Playlist by Spotify Genie`;
+    
+    // Format track URIs - we need to convert IDs to full Spotify URIs
+    const trackUris = lastGeneratedPlaylist.tracks.map(track => `spotify:track:${track.id}`);
+    
+    // Save the playlist
+    const result = await savePlaylistToSpotify(playlistName, trackUris);
+    
+    // Update UI based on result
+    if (result.success) {
+      // Create success message with link
+      const playlistResultsDiv = document.getElementById('playlist-results');
+      const successMessage = document.createElement('div');
+      successMessage.className = 'success-message';
+      successMessage.innerHTML = `
+        <p>Playlist "${result.playlistName}" saved successfully!</p>
+        <a href="${result.playlistUrl}" target="_blank" class="spotify-button">
+          <i class="fab fa-spotify" style="color: green;"></i> Open in Spotify
+        </a>
+      `;
+      
+      // Insert after the track list
+      const trackList = playlistResultsDiv.querySelector('.track-list');
+      if (trackList) {
+        trackList.after(successMessage);
+      } else {
+        playlistResultsDiv.appendChild(successMessage);
+      }
+      
+      // Update button
+      if (saveButton) {
+        saveButton.textContent = "Saved to Spotify ✓";
+        saveButton.disabled = true;
+      }
+    } else {
+      // Show error
+      alert(`Failed to save playlist: ${result.error}`);
+      
+      // Reset button
+      if (saveButton) {
+        saveButton.textContent = "Save to Spotify";
+        saveButton.disabled = false;
+      }
+    }
+  } catch (error) {
+    console.error("Error in handleSaveToSpotify:", error);
+    alert(`Error saving playlist: ${error.message}`);
+    
+    // Reset button
+    const saveButton = document.querySelector('.save-spotify-btn');
+    if (saveButton) {
+      saveButton.textContent = "Save to Spotify";
+      saveButton.disabled = false;
+    }
+  }
+}
 
 // Update the playlist generation function to store the last playlist
 async function handleGeneratePlaylist(event) {
@@ -713,21 +1098,44 @@ async function loginWithSpotifyClick() {
   await redirectToSpotifyAuthorize();
 }
 
-
 async function logoutClick() {
   localStorage.clear();
   window.location.href = redirectUrl;
 }
 
-
-async function refreshTokenClick() {
+async function handleSearch(event) {
+  event.preventDefault();
+  const searchInput = document.getElementById('search-input');
+ 
+  if (!searchInput) {
+    console.error("Search input element not found");
+    return;
+  }
+ 
+  const query = searchInput.value.trim();
+  console.log(`Executing search for: "${query}"`);
+ 
+  if (!query) {
+    console.log("Empty search query, not sending request");
+    document.getElementById("search-results").innerHTML = 
+      '<div class="info-message">Please enter a search term</div>';
+    return;
+  }
+  
   try {
-    const token = await refreshToken();
-    currentToken.save(token);
-    alert("Token refreshed successfully!");
+    // Show loading indicator
+    document.getElementById("search-results").innerHTML = 
+      '<div class="loading-message">Searching...</div>';
+    
+    const searchResults = await searchSpotify(query);
+    console.log(`Search returned ${searchResults.length} results`);
+    
+    // Render search results
+    renderSearchResultsTemplate("search-results", { searchResults });
   } catch (error) {
-    console.error("Error refreshing token:", error);
-    alert("Error refreshing token: " + error.message);
+    console.error("Search error:", error);
+    document.getElementById("search-results").innerHTML =
+      `<div class="error-message">Search error: ${error.message}</div>`;
   }
 }
 
@@ -790,8 +1198,7 @@ function evalInContext(expr, context) {
 document.addEventListener('DOMContentLoaded', initApp);
 
 /**
- * FIXED CSV Recommendation Feature Integration for Spotify Genie
- * Replace these functions in app.js
+ * CSV Recommendation Feature Integration for Spotify Genie
  */
 
 // Global instance of recommendation engine
@@ -1120,6 +1527,7 @@ function renderRecommendationsTemplate(targetId, { recommendations }) {
     trackInfo.appendChild(trackArtist);
     trackInfo.appendChild(trackGenre);
     trackInfo.appendChild(trackScore);
+
     trackItem.appendChild(trackInfo);
 
     // Album cover (if available)
@@ -1268,7 +1676,6 @@ window.saveCSVRecommendationsToSpotify = saveCSVRecommendationsToSpotify;
 // Make these functions available to inline event handlers
 window.loginWithSpotifyClick = loginWithSpotifyClick;
 window.logoutClick = logoutClick;
-window.refreshTokenClick = refreshTokenClick;
 window.handleSearch = handleSearch;
 window.handleGeneratePlaylist = handleGeneratePlaylist;
 window.exportLikedSongsToCSV = exportLikedSongsToCSV;
