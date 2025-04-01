@@ -618,11 +618,43 @@ async function getSavedTracksWithFeatures() {
   return tracksWithFeatures;
 }
 
-// Enhanced processTracksForPlaylist to handle all playlist types
-function processTracksForPlaylist(tracks, playlistType) {
-  console.log(`Processing ${tracks.length} tracks for ${playlistType} playlist`);
+/**
+ * Integration code for playlist generators in Spotify Genie
+ * Adds the new playlist generator functions to the app
+ */
+
+// Update the processTracksForPlaylist function to use our new playlist generators
+function processTracksForPlaylist(trackItems, playlistType) {
+  console.log(`Processing ${trackItems.length} tracks for ${playlistType} playlist`);
   
-  // Handle different playlist types
+  // Map tracks to a common format with audio features if available
+  const tracks = trackItems.map(item => {
+    // Handle both saved tracks format and top tracks format
+    const track = item.track || item;
+    
+    return {
+      id: track.id,
+      name: track.name,
+      artist: track.artists ? track.artists.map(a => a.name).join(', ') : (track.artist || 'Unknown'),
+      albumCover: track.album && track.album.images && track.album.images.length > 0 
+        ? track.album.images[0].url 
+        : (track.albumCover || ''),
+      popularity: track.popularity || 50,
+      // Audio features if available
+      danceability: track.danceability,
+      energy: track.energy,
+      acousticness: track.acousticness,
+      valence: track.valence,
+      tempo: track.tempo,
+      // Album info
+      album: track.album ? {
+        name: track.album.name,
+        release_date: track.album.release_date || '2020'
+      } : null
+    };
+  });
+  
+  // Handle different playlist types using our new functions
   switch (playlistType) {
     case 'mood-happy':
       return getMoodPlaylist(tracks, 'happy');
@@ -642,14 +674,104 @@ function processTracksForPlaylist(tracks, playlistType) {
     case 'past-favorites':
       return getPastFavoritesPlaylist(tracks);
     
+    case 'new-releases':
+      return getNewReleasesPlaylist(tracks);
+    
     case 'genre-explorer':
       return getGenreExplorerPlaylist(tracks);
     
     default:
-      // Default to happy mood if no specific type matched
+      // If playlist type is not recognized, default to happy mood
+      console.log(`Playlist type "${playlistType}" not recognized, defaulting to happy mood`);
       return getMoodPlaylist(tracks, 'happy');
   }
 }
+
+// Replace the handleGeneratePlaylist function with this updated version
+async function handleGeneratePlaylist(event) {
+  event.preventDefault();
+  const selectedType = document.querySelector('input[name="playlist-type"]:checked');
+ 
+  if (!selectedType) {
+    console.error("No playlist type selected");
+    document.getElementById("playlist-results").innerHTML = 
+      '<div class="error-message">Please select a playlist type</div>';
+    return;
+  }
+ 
+  const playlistType = selectedType.value;
+  console.log(`Generating playlist of type: ${playlistType}`);
+ 
+  try {
+    // Show loading indicator
+    const submitButton = document.querySelector('#playlist-form button[type="submit"]');
+    if (submitButton) {
+      submitButton.textContent = "Generating...";
+      submitButton.disabled = true;
+    }
+    
+    document.getElementById("playlist-results").innerHTML = 
+      '<div class="loading-message">Generating your perfect playlist...</div>';
+    
+    // Get user's saved tracks for processing
+    console.log("Fetching tracks for playlist generation...");
+    const savedTracksResponse = await fetch('https://api.spotify.com/v1/me/tracks?limit=50', {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+    });
+    
+    if (!savedTracksResponse.ok) {
+      throw new Error(`Failed to fetch tracks: ${savedTracksResponse.status}`);
+    }
+    
+    const savedTracksData = await savedTracksResponse.json();
+    
+    if (!savedTracksData.items || savedTracksData.items.length === 0) {
+      throw new Error("No tracks found in your library");
+    }
+    
+    // Step 2: Get track IDs and prepare for audio features request
+    const trackIds = savedTracksData.items.map(item => item.track.id);
+    
+    // Step 3: Get audio features for better playlist generation
+    console.log("Fetching audio features for tracks...");
+    const tracksWithFeatures = await getAudioFeatures(trackIds, savedTracksData.items);
+    
+    // Step 4: Use our playlist generator functions
+    console.log(`Generating ${playlistType} playlist with ${tracksWithFeatures.length} tracks...`);
+    const playlistTracks = await processTracksByType(tracksWithFeatures, playlistType);
+    
+    console.log(`Generated playlist with ${playlistTracks.length} tracks`);
+    
+    // Store the generated playlist for potential saving to Spotify
+    lastGeneratedPlaylist = {
+      type: playlistType,
+      tracks: playlistTracks,
+      generatedAt: new Date()
+    };
+    
+    // Render the playlist to the UI
+    renderPlaylistResultsTemplate("playlist-results", {
+      playlistTracks,
+      playlistType
+    });
+    
+  } catch (error) {
+    console.error("Error generating playlist:", error);
+    document.getElementById("playlist-results").innerHTML =
+      `<div class="error-message">Error generating playlist: ${error.message}</div>`;
+  } finally {
+    // Reset button
+    const submitButton = document.querySelector('#playlist-form button[type="submit"]');
+    if (submitButton) {
+      submitButton.textContent = "Generate Playlist";
+      submitButton.disabled = false;
+    }
+  }
+}
+
+// Make sure the functions are available globally for use in event handlers
+window.handleGeneratePlaylist = handleGeneratePlaylist;
 
 // Function to get a readable name from playlist type
 function getPlaylistDisplayName(type) {
@@ -738,69 +860,6 @@ async function handleSaveToSpotify() {
     if (saveButton) {
       saveButton.textContent = "Save to Spotify";
       saveButton.disabled = false;
-    }
-  }
-}
-
-// Update the playlist generation function to store the last playlist
-async function handleGeneratePlaylist(event) {
-  event.preventDefault();
-  const selectedType = document.querySelector('input[name="playlist-type"]:checked');
- 
-  if (!selectedType) {
-    console.error("No playlist type selected");
-    return;
-  }
- 
-  const playlistType = selectedType.value;
-  console.log(`Generating playlist of type: ${playlistType}`);
- 
-  try {
-    // Show loading indicator
-    const submitButton = document.querySelector('#playlist-form button[type="submit"]');
-    if (submitButton) {
-      submitButton.textContent = "Generating...";
-      submitButton.disabled = true;
-    }
-    
-    // For demo purposes, we'll use the same generation method for all types
-    // In a real implementation, we would customize the generation based on the type
-    const baseType = playlistType.split('-')[0];
-    
-    // Run the playlist generation - fallback to 'mood' for all new types as specified
-    const playlistTracks = await generatePlaylistByType(baseType === 'mood' ? 'mood' : 
-                                                      (baseType === 'past' ? 'throwback' : 'mood'));
-    
-    console.log(`Generated playlist with ${playlistTracks.length} tracks`);
-    
-    // Store the generated playlist
-    lastGeneratedPlaylist = {
-      type: playlistType,
-      tracks: playlistTracks,
-      generatedAt: new Date()
-    };
-    
-    // Render the playlist to the UI
-    renderPlaylistResultsTemplate("playlist-results", {
-      playlistTracks,
-      playlistType
-    });
-    
-    // Reset button
-    if (submitButton) {
-      submitButton.textContent = "Generate Playlist";
-      submitButton.disabled = false;
-    }
-  } catch (error) {
-    console.error("Error generating playlist:", error);
-    document.getElementById("playlist-results").innerHTML =
-      `<div class="error-message">Error generating playlist: ${error.message}</div>`;
-      
-    // Reset button
-    const submitButton = document.querySelector('#playlist-form button[type="submit"]');
-    if (submitButton) {
-      submitButton.textContent = "Generate Playlist";
-      submitButton.disabled = false;
     }
   }
 }
@@ -1053,13 +1112,14 @@ async function handleSaveToSpotify() {
   }
 }
 
-// Update the playlist generation function to store the last playlist
 async function handleGeneratePlaylist(event) {
   event.preventDefault();
   const selectedType = document.querySelector('input[name="playlist-type"]:checked');
  
   if (!selectedType) {
     console.error("No playlist type selected");
+    document.getElementById("playlist-results").innerHTML = 
+      '<div class="error-message">Please select a playlist type</div>';
     return;
   }
  
@@ -1067,11 +1127,62 @@ async function handleGeneratePlaylist(event) {
   console.log(`Generating playlist of type: ${playlistType}`);
  
   try {
-    // Run the playlist generation
-    const playlistTracks = await generatePlaylistByType(playlistType);
-    console.log(`Generated playlist with ${playlistTracks.length} tracks`);
+    // Show loading indicator
+    const submitButton = document.querySelector('#playlist-form button[type="submit"]');
+    if (submitButton) {
+      submitButton.textContent = "Generating...";
+      submitButton.disabled = true;
+    }
     
-    // Store the generated playlist
+    document.getElementById("playlist-results").innerHTML = 
+      '<div class="loading-message">Generating your perfect playlist...</div>';
+    
+    // Get user's saved tracks for processing
+    console.log("Fetching tracks for playlist generation...");
+    const savedTracksResponse = await fetch('https://api.spotify.com/v1/me/tracks?limit=50', {
+      method: 'GET',
+      headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
+    });
+    
+    if (!savedTracksResponse.ok) {
+      throw new Error(`Failed to fetch tracks: ${savedTracksResponse.status}`);
+    }
+    
+    const savedTracksData = await savedTracksResponse.json();
+    
+    if (!savedTracksData.items || savedTracksData.items.length === 0) {
+      throw new Error("No tracks found in your library");
+    }
+    
+    // Format the tracks for processing
+    const formattedTracks = savedTracksData.items.map(item => {
+      const track = item.track;
+      return {
+        id: track.id,
+        name: track.name,
+        artist: track.artists.map(a => a.name).join(', '),
+        artists: track.artists,
+        album: track.album,
+        popularity: track.popularity || 50,
+        albumCover: track.album && track.album.images && track.album.images.length > 0 
+          ? track.album.images[0].url 
+          : ''
+      };
+    });
+    
+    console.log(`Formatted ${formattedTracks.length} tracks for playlist generation:`, formattedTracks[0]);
+    
+    // Get audio features to improve playlist generation
+    const trackIds = formattedTracks.map(track => track.id);
+    const tracksWithFeatures = await getAudioFeatures(trackIds, formattedTracks);
+    
+    console.log(`Got audio features for ${tracksWithFeatures.length} tracks`);
+    
+    // Generate the playlist
+    const playlistTracks = processTracksByType(tracksWithFeatures, playlistType);
+    console.log(`Generated playlist with ${playlistTracks.length} tracks:`, playlistTracks);
+    
+    // Store the generated playlist for potential saving to Spotify
     lastGeneratedPlaylist = {
       type: playlistType,
       tracks: playlistTracks,
@@ -1083,13 +1194,20 @@ async function handleGeneratePlaylist(event) {
       playlistTracks,
       playlistType
     });
+    
   } catch (error) {
     console.error("Error generating playlist:", error);
     document.getElementById("playlist-results").innerHTML =
       `<div class="error-message">Error generating playlist: ${error.message}</div>`;
+  } finally {
+    // Reset button
+    const submitButton = document.querySelector('#playlist-form button[type="submit"]');
+    if (submitButton) {
+      submitButton.textContent = "Generate Playlist";
+      submitButton.disabled = false;
+    }
   }
 }
-
 // Make sure to wire up the save function
 window.saveToSpotify = handleSaveToSpotify;
 
@@ -1479,6 +1597,631 @@ async function generateCSVRecommendations() {
   }
 }
 
+// Function to generate happy recommendations and format songs nicely using the Spotify API
+async function generateHappyRecommendations() {
+  try {
+    // Show loading indicator
+    document.getElementById('csv-recommendations-results').innerHTML = 
+      '<p class="loading">Generating happy song recommendations...</p>';
+    
+    // Check if engine and data exist
+    if (!recommendationEngine) {
+      console.log("Creating recommendation engine");
+      recommendationEngine = new window.RecommendationEngine();
+    }
+    
+    if (!recommendationEngine.dataset || !recommendationEngine.likedSongs) {
+      console.error("Missing data:", {
+        dataset: Boolean(recommendationEngine.dataset),
+        likedSongs: Boolean(recommendationEngine.likedSongs)
+      });
+      throw new Error("Please load both a dataset and liked songs first");
+    }
+    
+    console.log("Starting happy song recommendation generation with:", {
+      datasetSize: recommendationEngine.dataset.length,
+      likedSongsSize: recommendationEngine.likedSongs.length
+    });
+    
+    // Verify dataset has required properties
+    const sampleSong = recommendationEngine.dataset[0];
+    console.log("Sample song from dataset:", sampleSong);
+    
+    // Make sure required features exist in the dataset
+    const requiredFeatures = ['popularity', 'danceability', 'energy', 'acousticness', 'valence', 'tempo'];
+    const missingFeatures = requiredFeatures.filter(feature => 
+      !sampleSong.hasOwnProperty(feature) && !sampleSong.hasOwnProperty(`${feature}_standardized`)
+    );
+    
+    if (missingFeatures.length > 0) {
+      console.warn("Dataset is missing these features:", missingFeatures);
+      // If features are missing, add dummy values
+      recommendationEngine.dataset.forEach(song => {
+        missingFeatures.forEach(feature => {
+          song[feature] = Math.random() * 0.5 + 0.25; // Random value between 0.25 and 0.75
+        });
+      });
+      // Reprocess data with added features
+      recommendationEngine.preprocessData();
+    }
+    
+    // Force preprocessing before generating recommendations
+    console.log("Preprocessing data...");
+    recommendationEngine.preprocessData();
+    
+    // Generate 100 recommendations instead of 50 for better filtering
+    console.log("Calling recommendSongs method to get 100 recommendations...");
+    const allRecommendations = recommendationEngine.recommendSongs(100);
+    console.log(`Generated ${allRecommendations.length} total recommendations`);
+    
+    if (!allRecommendations || allRecommendations.length === 0) {
+      throw new Error("No recommendations were generated");
+    }
+    
+    // Filter recommendations to prioritize happy songs (high valence and energy)
+    const happyRecommendations = allRecommendations
+      .filter(song => {
+        // Check if song has valence and energy properties
+        const hasValence = song.hasOwnProperty('valence') || song.hasOwnProperty('valence_standardized');
+        const hasEnergy = song.hasOwnProperty('energy') || song.hasOwnProperty('energy_standardized');
+        
+        if (!hasValence || !hasEnergy) {
+          return true; // Include songs without these properties to avoid empty results
+        }
+        
+        // Get the valence and energy values
+        const valence = song.valence || song.valence_standardized || 0;
+        const energy = song.energy || song.energy_standardized || 0;
+        
+        // Consider songs with high valence (happiness) and reasonable energy as "happy"
+        return valence > 0.6 && energy > 0.5;
+      })
+      .sort((a, b) => {
+        // Sort by combined valence and energy score (prioritizing valence)
+        const aHappyScore = ((a.valence || a.valence_standardized || 0) * 0.7) + 
+                          ((a.energy || a.energy_standardized || 0) * 0.3);
+        const bHappyScore = ((b.valence || b.valence_standardized || 0) * 0.7) + 
+                          ((b.energy || b.energy_standardized || 0) * 0.3);
+        return bHappyScore - aHappyScore;
+      })
+      .slice(0, 50); // Take top 50 happy songs
+    
+    console.log(`Filtered down to ${happyRecommendations.length} happy recommendations`);
+    
+    // Ensure recommendations have all required properties
+    const cleanedRecommendations = happyRecommendations.map(rec => ({
+      name: rec.name || "Unknown Track",
+      artist: rec.artist || "Unknown Artist",
+      genre: rec.genre || "Unknown Genre",
+      score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
+      // Add happiness score for reference
+      happinessScore: (((rec.valence || rec.valence_standardized || 0) * 0.7) + 
+                     ((rec.energy || rec.energy_standardized || 0) * 0.3)).toFixed(2),
+      id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
+      albumCover: rec.albumCover || ''
+    }));
+    
+    // Store all happy recommendations for potential use in playlist creation
+    lastCsvRecommendations = cleanedRecommendations;
+    console.log(`Stored ${lastCsvRecommendations.length} cleaned happy recommendations`);
+    
+    // Randomly select 10 from the filtered happy recommendations to display
+    const displayCount = Math.min(10, cleanedRecommendations.length);
+    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
+    const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
+    
+    console.log(`Randomly selected ${selectedRecommendations.length} happy recommendations to display`);
+    
+    // Display only the randomly selected recommendations
+    renderRecommendationsTemplate("csv-recommendations-results", {
+      recommendations: selectedRecommendations,
+      isHappyRecommendation: true
+    });
+    
+  } catch (error) {
+    console.error("Error generating happy recommendations:", error);
+    document.getElementById('csv-recommendations-results').innerHTML = 
+      `<div class="error-message">Error generating happy recommendations: ${error.message}</div>`;
+  }
+}
+
+// Function to generate sad recommendations and format songs nicely using the Spotify API
+async function generateSadRecommendations() {
+  try {
+    // Show loading indicator
+    document.getElementById('csv-recommendations-results').innerHTML = 
+      '<p class="loading">Generating recommendations...</p>';
+    
+    // Check if engine and data exist
+    if (!recommendationEngine) {
+      console.log("Creating recommendation engine");
+      recommendationEngine = new window.RecommendationEngine();
+    }
+    
+    if (!recommendationEngine.dataset || !recommendationEngine.likedSongs) {
+      console.error("Missing data:", {
+        dataset: Boolean(recommendationEngine.dataset),
+        likedSongs: Boolean(recommendationEngine.likedSongs)
+      });
+      throw new Error("Please load both a dataset and liked songs first");
+    }
+    
+    console.log("Starting recommendation generation with:", {
+      datasetSize: recommendationEngine.dataset.length,
+      likedSongsSize: recommendationEngine.likedSongs.length
+    });
+    
+    // Verify dataset has required properties
+    const sampleSong = recommendationEngine.dataset[0];
+    console.log("Sample song from dataset:", sampleSong);
+    
+    // Make sure required features exist in the dataset
+    const requiredFeatures = ['popularity', 'danceability', 'energy', 'acousticness', 'valence', 'tempo'];
+    const missingFeatures = requiredFeatures.filter(feature => 
+      !sampleSong.hasOwnProperty(feature) && !sampleSong.hasOwnProperty(`${feature}_standardized`)
+    );
+    
+    if (missingFeatures.length > 0) {
+      console.warn("Dataset is missing these features:", missingFeatures);
+      // If features are missing, add dummy values
+      recommendationEngine.dataset.forEach(song => {
+        missingFeatures.forEach(feature => {
+          song[feature] = Math.random() * 0.5 + 0.25; // Random value between 0.25 and 0.75
+        });
+      });
+      // Reprocess data with added features
+      recommendationEngine.preprocessData();
+    }
+    
+    // Force preprocessing before generating recommendations
+    console.log("Preprocessing data...");
+    recommendationEngine.preprocessData();
+    
+    // Generate 50 recommendations instead of 10
+    console.log("Calling recommendSongs method to get 50 recommendations...");
+    const allRecommendations = recommendationEngine.recommendSongs(50);
+    console.log(`Generated ${allRecommendations.length} total recommendations`);
+    
+    if (!allRecommendations || allRecommendations.length === 0) {
+      throw new Error("No recommendations were generated");
+    }
+    
+    // Ensure recommendations have all required properties
+    const cleanedRecommendations = allRecommendations.map(rec => ({
+      name: rec.name || "Unknown Track",
+      artist: rec.artist || "Unknown Artist",
+      genre: rec.genre || "Unknown Genre",
+      score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
+      id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
+      albumCover: rec.albumCover || ''
+    }));
+    
+    // Store all 50 recommendations for potential use in playlist creation
+    lastCsvRecommendations = cleanedRecommendations;
+    console.log(`Stored ${lastCsvRecommendations.length} cleaned recommendations`);
+    
+    // Randomly select 10 from the 50 recommendations to display
+    const displayCount = Math.min(10, cleanedRecommendations.length);
+    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
+    const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
+    
+    console.log(`Randomly selected ${selectedRecommendations.length} recommendations to display`);
+    
+    // Display only the randomly selected recommendations
+    renderRecommendationsTemplate("csv-recommendations-results", {
+      recommendations: selectedRecommendations
+    });
+    
+  } catch (error) {
+    console.error("Error generating recommendations:", error);
+    document.getElementById('csv-recommendations-results').innerHTML = 
+      `<div class="error-message">Error generating recommendations: ${error.message}</div>`;
+  }
+}
+
+// Function to generate chill recommendations and format songs nicely using the Spotify API
+async function generateSadRecommendations() {
+  try {
+    // Show loading indicator
+    document.getElementById('csv-recommendations-results').innerHTML = 
+      '<p class="loading">Generating sad music recommendations...</p>';
+    
+    // Check if engine and data exist
+    if (!recommendationEngine) {
+      console.log("Creating recommendation engine");
+      recommendationEngine = new window.RecommendationEngine();
+    }
+    
+    if (!recommendationEngine.dataset || !recommendationEngine.likedSongs) {
+      console.error("Missing data:", {
+        dataset: Boolean(recommendationEngine.dataset),
+        likedSongs: Boolean(recommendationEngine.likedSongs)
+      });
+      throw new Error("Please load both a dataset and liked songs first");
+    }
+    
+    console.log("Starting sad recommendation generation with:", {
+      datasetSize: recommendationEngine.dataset.length,
+      likedSongsSize: recommendationEngine.likedSongs.length
+    });
+    
+    // Verify dataset has required properties
+    const sampleSong = recommendationEngine.dataset[0];
+    console.log("Sample song from dataset:", sampleSong);
+    
+    // Make sure required features exist in the dataset
+    const requiredFeatures = ['popularity', 'danceability', 'energy', 'acousticness', 'valence', 'tempo'];
+    const missingFeatures = requiredFeatures.filter(feature => 
+      !sampleSong.hasOwnProperty(feature) && !sampleSong.hasOwnProperty(`${feature}_standardized`)
+    );
+    
+    if (missingFeatures.length > 0) {
+      console.warn("Dataset is missing these features:", missingFeatures);
+      // If features are missing, add dummy values
+      recommendationEngine.dataset.forEach(song => {
+        missingFeatures.forEach(feature => {
+          song[feature] = Math.random() * 0.5 + 0.25; // Random value between 0.25 and 0.75
+        });
+      });
+      // Reprocess data with added features
+      recommendationEngine.preprocessData();
+    }
+    
+    // Force preprocessing before generating recommendations
+    console.log("Preprocessing data...");
+    recommendationEngine.preprocessData();
+    
+    // Generate 100 recommendations to have a larger pool to filter from
+    console.log("Calling recommendSongs method to get 100 initial recommendations...");
+    const allRecommendations = recommendationEngine.recommendSongs(100);
+    console.log(`Generated ${allRecommendations.length} total recommendations`);
+    
+    if (!allRecommendations || allRecommendations.length === 0) {
+      throw new Error("No recommendations were generated");
+    }
+    
+    // Filter for sad songs based on audio features
+    // Low valence (happiness), lower energy, higher acousticness
+    console.log("Filtering for sad songs based on audio features...");
+    const sadSongs = allRecommendations.filter(song => {
+      // Prioritize low valence (happiness) as the main indicator of sad songs
+      const valence = song.valence || song.valence_standardized || 0.5;
+      const energy = song.energy || song.energy_standardized || 0.5;
+      const acousticness = song.acousticness || song.acousticness_standardized || 0.5;
+      
+      // Calculate a "sadness score" - lower is sadder
+      // Valence has the most weight in determining sad songs
+      const sadnessScore = valence * 0.6 + energy * 0.3 - acousticness * 0.1;
+      
+      // Return true for songs with low sadness score (sad songs)
+      return sadnessScore < 0.4;
+    });
+    
+    console.log(`Found ${sadSongs.length} sad songs after filtering`);
+    
+    // If we don't have enough sad songs, include some from the original recommendations
+    let selectedRecommendations = sadSongs;
+    if (sadSongs.length < 10) {
+      console.log("Not enough sad songs found, adding some general recommendations");
+      // Sort remaining songs by valence (ascending) to get the saddest of what's left
+      const remainingSongs = allRecommendations
+        .filter(song => !sadSongs.includes(song))
+        .sort((a, b) => {
+          const valenceA = a.valence || a.valence_standardized || 0.5;
+          const valenceB = b.valence || b.valence_standardized || 0.5;
+          return valenceA - valenceB;
+        });
+      
+      // Add enough to reach 50 total
+      selectedRecommendations = [...sadSongs, ...remainingSongs.slice(0, 50 - sadSongs.length)];
+    }
+    
+    // Ensure we have at most 50 recommendations
+    selectedRecommendations = selectedRecommendations.slice(0, 50);
+    
+    // Ensure recommendations have all required properties
+    const cleanedRecommendations = selectedRecommendations.map(rec => ({
+      name: rec.name || "Unknown Track",
+      artist: rec.artist || "Unknown Artist",
+      genre: rec.genre || "Unknown Genre",
+      score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
+      id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
+      albumCover: rec.albumCover || '',
+      // Include sadness indicators for debugging/display
+      valence: rec.valence || rec.valence_standardized || 'N/A',
+      energy: rec.energy || rec.energy_standardized || 'N/A',
+      acousticness: rec.acousticness || rec.acousticness_standardized || 'N/A'
+    }));
+    
+    // Store all sad recommendations for potential use in playlist creation
+    lastCsvRecommendations = cleanedRecommendations;
+    console.log(`Stored ${lastCsvRecommendations.length} cleaned sad recommendations`);
+    
+    // Randomly select 10 from the sad recommendations to display
+    const displayCount = Math.min(10, cleanedRecommendations.length);
+    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
+    const displayRecommendations = shuffledRecommendations.slice(0, displayCount);
+    
+    console.log(`Randomly selected ${displayRecommendations.length} sad recommendations to display`);
+    
+    // Display only the randomly selected recommendations
+    renderRecommendationsTemplate("csv-recommendations-results", {
+      recommendations: displayRecommendations
+    });
+    
+  } catch (error) {
+    console.error("Error generating sad recommendations:", error);
+    document.getElementById('csv-recommendations-results').innerHTML = 
+      `<div class="error-message">Error generating sad recommendations: ${error.message}</div>`;
+  }
+}
+
+// Function to generate energetic recommendations and format songs nicely using the Spotify API
+async function generateChillRecommendations() {
+  try {
+    // Show loading indicator
+    document.getElementById('csv-recommendations-results').innerHTML = 
+      '<p class="loading">Generating sad music recommendations...</p>';
+    
+    // Check if engine and data exist
+    if (!recommendationEngine) {
+      console.log("Creating recommendation engine");
+      recommendationEngine = new window.RecommendationEngine();
+    }
+    
+    if (!recommendationEngine.dataset || !recommendationEngine.likedSongs) {
+      console.error("Missing data:", {
+        dataset: Boolean(recommendationEngine.dataset),
+        likedSongs: Boolean(recommendationEngine.likedSongs)
+      });
+      throw new Error("Please load both a dataset and liked songs first");
+    }
+    
+    console.log("Starting sad recommendation generation with:", {
+      datasetSize: recommendationEngine.dataset.length,
+      likedSongsSize: recommendationEngine.likedSongs.length
+    });
+    
+    // Verify dataset has required properties
+    const sampleSong = recommendationEngine.dataset[0];
+    console.log("Sample song from dataset:", sampleSong);
+    
+    // Make sure required features exist in the dataset
+    const requiredFeatures = ['popularity', 'danceability', 'energy', 'acousticness', 'valence', 'tempo'];
+    const missingFeatures = requiredFeatures.filter(feature => 
+      !sampleSong.hasOwnProperty(feature) && !sampleSong.hasOwnProperty(`${feature}_standardized`)
+    );
+    
+    if (missingFeatures.length > 0) {
+      console.warn("Dataset is missing these features:", missingFeatures);
+      // If features are missing, add dummy values
+      recommendationEngine.dataset.forEach(song => {
+        missingFeatures.forEach(feature => {
+          song[feature] = Math.random() * 0.5 + 0.25; // Random value between 0.25 and 0.75
+        });
+      });
+      // Reprocess data with added features
+      recommendationEngine.preprocessData();
+    }
+    
+    // Force preprocessing before generating recommendations
+    console.log("Preprocessing data...");
+    recommendationEngine.preprocessData();
+    
+    // Generate 100 recommendations to have a larger pool to filter from
+    console.log("Calling recommendSongs method to get 100 initial recommendations...");
+    const allRecommendations = recommendationEngine.recommendSongs(100);
+    console.log(`Generated ${allRecommendations.length} total recommendations`);
+    
+    if (!allRecommendations || allRecommendations.length === 0) {
+      throw new Error("No recommendations were generated");
+    }
+    
+    // Filter for sad songs based on audio features
+    // Low valence (happiness), lower energy, higher acousticness
+    console.log("Filtering for sad songs based on audio features...");
+    const sadSongs = allRecommendations.filter(song => {
+      // Prioritize low valence (happiness) as the main indicator of sad songs
+      const valence = song.valence || song.valence_standardized || 0.5;
+      const energy = song.energy || song.energy_standardized || 0.5;
+      const acousticness = song.acousticness || song.acousticness_standardized || 0.5;
+      
+      // Calculate a "sadness score" - lower is sadder
+      // Valence has the most weight in determining sad songs
+      const sadnessScore = valence * 0.6 + energy * 0.3 - acousticness * 0.1;
+      
+      // Return true for songs with low sadness score (sad songs)
+      return sadnessScore < 0.4;
+    });
+    
+    console.log(`Found ${sadSongs.length} sad songs after filtering`);
+    
+    // If we don't have enough sad songs, include some from the original recommendations
+    let selectedRecommendations = sadSongs;
+    if (sadSongs.length < 10) {
+      console.log("Not enough sad songs found, adding some general recommendations");
+      // Sort remaining songs by valence (ascending) to get the saddest of what's left
+      const remainingSongs = allRecommendations
+        .filter(song => !sadSongs.includes(song))
+        .sort((a, b) => {
+          const valenceA = a.valence || a.valence_standardized || 0.5;
+          const valenceB = b.valence || b.valence_standardized || 0.5;
+          return valenceA - valenceB;
+        });
+      
+      // Add enough to reach 50 total
+      selectedRecommendations = [...sadSongs, ...remainingSongs.slice(0, 50 - sadSongs.length)];
+    }
+    
+    // Ensure we have at most 50 recommendations
+    selectedRecommendations = selectedRecommendations.slice(0, 50);
+    
+    // Ensure recommendations have all required properties
+    const cleanedRecommendations = selectedRecommendations.map(rec => ({
+      name: rec.name || "Unknown Track",
+      artist: rec.artist || "Unknown Artist",
+      genre: rec.genre || "Unknown Genre",
+      score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
+      id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
+      albumCover: rec.albumCover || '',
+      // Include sadness indicators for debugging/display
+      valence: rec.valence || rec.valence_standardized || 'N/A',
+      energy: rec.energy || rec.energy_standardized || 'N/A',
+      acousticness: rec.acousticness || rec.acousticness_standardized || 'N/A'
+    }));
+    
+    // Store all sad recommendations for potential use in playlist creation
+    lastCsvRecommendations = cleanedRecommendations;
+    console.log(`Stored ${lastCsvRecommendations.length} cleaned sad recommendations`);
+    
+    // Randomly select 10 from the sad recommendations to display
+    const displayCount = Math.min(10, cleanedRecommendations.length);
+    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
+    const displayRecommendations = shuffledRecommendations.slice(0, displayCount);
+    
+    console.log(`Randomly selected ${displayRecommendations.length} sad recommendations to display`);
+    
+    // Display only the randomly selected recommendations
+    renderRecommendationsTemplate("csv-recommendations-results", {
+      recommendations: displayRecommendations
+    });
+    
+  } catch (error) {
+    console.error("Error generating sad recommendations:", error);
+    document.getElementById('csv-recommendations-results').innerHTML = 
+      `<div class="error-message">Error generating sad recommendations: ${error.message}</div>`;
+  }
+}
+
+// Function to generate energetic recommendations and format songs nicely using the Spotify API
+async function generateHappyRecommendations() {
+  try {
+    // Show loading indicator
+    document.getElementById('csv-recommendations-results').innerHTML = 
+      '<p class="loading">Generating happy song recommendations...</p>';
+    
+    // Check if engine and data exist
+    if (!recommendationEngine) {
+      console.log("Creating recommendation engine");
+      recommendationEngine = new window.RecommendationEngine();
+    }
+    
+    if (!recommendationEngine.dataset || !recommendationEngine.likedSongs) {
+      console.error("Missing data:", {
+        dataset: Boolean(recommendationEngine.dataset),
+        likedSongs: Boolean(recommendationEngine.likedSongs)
+      });
+      throw new Error("Please load both a dataset and liked songs first");
+    }
+    
+    console.log("Starting happy song recommendation generation with:", {
+      datasetSize: recommendationEngine.dataset.length,
+      likedSongsSize: recommendationEngine.likedSongs.length
+    });
+    
+    // Verify dataset has required properties
+    const sampleSong = recommendationEngine.dataset[0];
+    console.log("Sample song from dataset:", sampleSong);
+    
+    // Make sure required features exist in the dataset
+    const requiredFeatures = ['popularity', 'danceability', 'energy', 'acousticness', 'valence', 'tempo'];
+    const missingFeatures = requiredFeatures.filter(feature => 
+      !sampleSong.hasOwnProperty(feature) && !sampleSong.hasOwnProperty(`${feature}_standardized`)
+    );
+    
+    if (missingFeatures.length > 0) {
+      console.warn("Dataset is missing these features:", missingFeatures);
+      // If features are missing, add dummy values
+      recommendationEngine.dataset.forEach(song => {
+        missingFeatures.forEach(feature => {
+          song[feature] = Math.random() * 0.5 + 0.25; // Random value between 0.25 and 0.75
+        });
+      });
+      // Reprocess data with added features
+      recommendationEngine.preprocessData();
+    }
+    
+    // Force preprocessing before generating recommendations
+    console.log("Preprocessing data...");
+    recommendationEngine.preprocessData();
+    
+    // Generate 100 recommendations instead of 50 for better filtering
+    console.log("Calling recommendSongs method to get 100 recommendations...");
+    const allRecommendations = recommendationEngine.recommendSongs(100);
+    console.log(`Generated ${allRecommendations.length} total recommendations`);
+    
+    if (!allRecommendations || allRecommendations.length === 0) {
+      throw new Error("No recommendations were generated");
+    }
+    
+    // Filter recommendations to prioritize happy songs (high valence and energy)
+    const happyRecommendations = allRecommendations
+      .filter(song => {
+        // Check if song has valence and energy properties
+        const hasValence = song.hasOwnProperty('valence') || song.hasOwnProperty('valence_standardized');
+        const hasEnergy = song.hasOwnProperty('energy') || song.hasOwnProperty('energy_standardized');
+        
+        if (!hasValence || !hasEnergy) {
+          return true; // Include songs without these properties to avoid empty results
+        }
+        
+        // Get the valence and energy values
+        const valence = song.valence || song.valence_standardized || 0;
+        const energy = song.energy || song.energy_standardized || 0;
+        
+        // Consider songs with high valence (happiness) and reasonable energy as "happy"
+        return valence > 0.7 && energy > 0.8;
+      })
+      .sort((a, b) => {
+        // Sort by combined valence and energy score (prioritizing energy)
+        const aHappyScore = ((a.valence || a.valence_standardized || 0) * 0.3) + 
+                          ((a.energy || a.energy_standardized || 0) * 0.7);
+        const bHappyScore = ((b.valence || b.valence_standardized || 0) * 0.3) + 
+                          ((b.energy || b.energy_standardized || 0) * 0.7);
+        return bHappyScore - aHappyScore;
+      })
+      .slice(0, 50); // Take top 50 happy songs
+    
+    console.log(`Filtered down to ${happyRecommendations.length} happy recommendations`);
+    
+    // Ensure recommendations have all required properties
+    const cleanedRecommendations = happyRecommendations.map(rec => ({
+      name: rec.name || "Unknown Track",
+      artist: rec.artist || "Unknown Artist",
+      genre: rec.genre || "Unknown Genre",
+      score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
+      // Add happiness score for reference
+      happinessScore: (((rec.valence || rec.valence_standardized || 0) * 0.3) + 
+                     ((rec.energy || rec.energy_standardized || 0) * 0.7)).toFixed(2),
+      id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
+      albumCover: rec.albumCover || ''
+    }));
+    
+    // Store all happy recommendations for potential use in playlist creation
+    lastCsvRecommendations = cleanedRecommendations;
+    console.log(`Stored ${lastCsvRecommendations.length} cleaned happy recommendations`);
+    
+    // Randomly select 10 from the filtered happy recommendations to display
+    const displayCount = Math.min(10, cleanedRecommendations.length);
+    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
+    const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
+    
+    console.log(`Randomly selected ${selectedRecommendations.length} happy recommendations to display`);
+    
+    // Display only the randomly selected recommendations
+    renderRecommendationsTemplate("csv-recommendations-results", {
+      recommendations: selectedRecommendations,
+      isHappyRecommendation: true
+    });
+    
+  } catch (error) {
+    console.error("Error generating happy recommendations:", error);
+    document.getElementById('csv-recommendations-results').innerHTML = 
+      `<div class="error-message">Error generating happy recommendations: ${error.message}</div>`;
+  }
+}
+
+
 // Template rendering function for song recommendations
 function renderRecommendationsTemplate(targetId, { recommendations }) {
   const targetElement = document.getElementById(targetId);
@@ -1677,6 +2420,7 @@ window.handleDatasetUpload = handleDatasetUpload;
 window.handleLikedSongsUpload = handleLikedSongsUpload;
 window.useSpotifyLikedSongs = useSpotifyLikedSongs;
 window.generateCSVRecommendations = generateCSVRecommendations;
+window.generateMoodBasedRecommendations = generateMoodBasedRecommendations;
 window.saveCSVRecommendationsToSpotify = saveCSVRecommendationsToSpotify;
 // Make these functions available to inline event handlers
 window.loginWithSpotifyClick = loginWithSpotifyClick;

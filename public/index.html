@@ -277,6 +277,156 @@
       <h4>3. Generate Recommendations</h4>
       <button id="generate-recommendations-btn" onclick="generateCSVRecommendations()" disabled>Generate Recommendations</button>
     </div>
+
+    <!-- Updated mood selection UI to add disabled state handling -->
+<div class="mood-selection">
+  <h4>4. Filter by Mood</h4>
+  <p>Get recommendations that match a specific mood</p>
+  <div class="mood-buttons">
+    <button onclick="generateHappyRecommendations()" class="mood-btn happy-btn" id="happy-mood-btn">
+      <i class="fas fa-smile"></i> Happy
+    </button>
+    <button onclick="generateSadRecommendations()" class="mood-btn sad-btn" id="sad-mood-btn" >
+      <i class="fas fa-sad-tear"></i> Sad
+    </button>
+    <button onclick="generateChillRecommendations()" class="mood-btn chill-btn" id="chill-mood-btn">
+      <i class="fas fa-couch"></i> Chill
+    </button>
+    <button onclick="generateEnergeticRecommendations()" class="mood-btn energetic-btn" id="energetic-mood-btn">
+      <i class="fas fa-bolt"></i> Energetic
+    </button>
+  </div>
+</div>
+
+<!-- Updated CSS for the mood buttons including disabled state -->
+<style>
+  .mood-selection {
+    margin: 15px 0;
+    padding: 15px;
+    background-color: #333;
+    border-radius: 8px;
+  }
+  
+  .mood-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  
+  .mood-btn {
+    padding: 10px 15px;
+    border-radius: 30px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.3s ease;
+  }
+  
+  .mood-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  .happy-btn {
+    background-color: #FFD700; /* Gold */
+    color: #333;
+  }
+  
+  .sad-btn {
+    background-color: #4682B4; /* Steel Blue */
+    color: white;
+  }
+  
+  .chill-btn {
+    background-color: #66CDAA; /* Medium Aquamarine */
+    color: #333;
+  }
+  
+  .energetic-btn {
+    background-color: #FF6347; /* Tomato */
+    color: white;
+  }
+  
+  /* Add animation for loading state */
+  .loading {
+    display: inline-block;
+    position: relative;
+    color: #aaa;
+    font-style: italic;
+  }
+  
+  .loading:after {
+    content: '...';
+    position: absolute;
+    animation: dots 1.5s infinite;
+  }
+  
+  @keyframes dots {
+    0%, 20% { content: '.'; }
+    40% { content: '..'; }
+    60%, 100% { content: '...'; }
+  }
+  
+  /* Enhanced track-item display for mood recommendations */
+  .track-item .mood-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 5px;
+  }
+  
+  .track-item .mood-score {
+    font-size: 0.8em;
+    color: #aaa;
+    margin-top: 3px;
+  }
+</style>
+
+<!-- Add this JavaScript to enable/disable mood buttons based on data availability -->
+<script>
+// Function to update mood button states
+function updateMoodButtonStates() {
+  const dataReady = window.recommendationEngine && 
+                   window.recommendationEngine.dataset && 
+                   window.recommendationEngine.likedSongs;
+  
+  const moodButtons = [
+    document.getElementById('happy-mood-btn'),
+    document.getElementById('sad-mood-btn'),
+    document.getElementById('chill-mood-btn'),
+    document.getElementById('energetic-mood-btn')
+  ];
+  
+  moodButtons.forEach(btn => {
+    if (btn) {
+      btn.disabled = !dataReady;
+    }
+  });
+}
+
+// Update buttons when data is loaded
+document.addEventListener('DOMContentLoaded', function() {
+  // Initially set buttons as disabled
+  updateMoodButtonStates();
+  
+  // Update the state when the generate recommendations button gets enabled
+  const observer = new MutationObserver(function(mutations) {
+    mutations.forEach(function(mutation) {
+      if (mutation.type === 'attributes' && mutation.attributeName === 'disabled') {
+        updateMoodButtonStates();
+      }
+    });
+  });
+  
+  const recButton = document.getElementById('generate-recommendations-btn');
+  if (recButton) {
+    observer.observe(recButton, { attributes: true });
+  }
+});
+</script>
     
     <div id="csv-recommendations-results"></div>
   </div>
@@ -579,6 +729,8 @@ function renderRecommendationsTemplate(targetId, recommendationsData) {
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
   <script src="recommendation-engine.js"></script>
+  <script src="playlist-functions.js"></script>
+  <script src="mood-integration.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
