@@ -1829,12 +1829,12 @@ renderRecommendationsTemplate("csv-recommendations-results", {
   }
 }
 
-// Function to generate energetic recommendations and format songs nicely using the Spotify API
+// Function to generate chill recommendations and format songs nicely using the Spotify API
 async function generateChillRecommendations() {
   try {
     // Show loading indicator
     document.getElementById('csv-recommendations-results').innerHTML = 
-      '<p class="loading">Generating sad music recommendations...</p>';
+      '<p class="loading">Generating recommendations...</p>';
     
     // Check if engine and data exist
     if (!recommendationEngine) {
@@ -1850,7 +1850,7 @@ async function generateChillRecommendations() {
       throw new Error("Please load both a dataset and liked songs first");
     }
     
-    console.log("Starting sad recommendation generation with:", {
+    console.log("Starting recommendation generation with:", {
       datasetSize: recommendationEngine.dataset.length,
       likedSongsSize: recommendationEngine.likedSongs.length
     });
@@ -1881,68 +1881,26 @@ async function generateChillRecommendations() {
     console.log("Preprocessing data...");
     recommendationEngine.preprocessData();
     
-    // Generate 100 recommendations to have a larger pool to filter from
-    console.log("Calling recommendSongs method to get 100 initial recommendations...");
-    const allRecommendations = recommendationEngine.recommendSongs(100);
+    // Generate 50 recommendations instead of 10
+    console.log("Calling recommendSongs method to get 50 recommendations...");
+    const allRecommendations = recommendationEngine.recommendSongs(50);
     console.log(`Generated ${allRecommendations.length} total recommendations`);
     
     if (!allRecommendations || allRecommendations.length === 0) {
       throw new Error("No recommendations were generated");
     }
     
-    // Filter for sad songs based on audio features
-    // Low valence (happiness), lower energy, higher acousticness
-    console.log("Filtering for sad songs based on audio features...");
-    const sadSongs = allRecommendations.filter(song => {
-      // Prioritize low valence (happiness) as the main indicator of sad songs
-      const valence = song.valence || song.valence_standardized || 0.5;
-      const energy = song.energy || song.energy_standardized || 0.5;
-      const acousticness = song.acousticness || song.acousticness_standardized || 0.5;
-      
-      // Calculate a "sadness score" - lower is sadder
-      // Valence has the most weight in determining sad songs
-      const sadnessScore = valence * 0.6 + energy * 0.3 - acousticness * 0.1;
-      
-      // Return true for songs with low sadness score (sad songs)
-      return sadnessScore < 0.4;
-    });
-    
-    console.log(`Found ${sadSongs.length} sad songs after filtering`);
-    
-    // If we don't have enough sad songs, include some from the original recommendations
-    if (sadSongs.length < 10) {
-      console.log("Not enough sad songs found, adding some general recommendations");
-      // Sort remaining songs by valence (ascending) to get the saddest of what's left
-      const remainingSongs = allRecommendations
-        .filter(song => !sadSongs.includes(song))
-        .sort((a, b) => {
-          const valenceA = a.valence || a.valence_standardized || 0.5;
-          const valenceB = b.valence || b.valence_standardized || 0.5;
-          return valenceA - valenceB;
-        });
-      
-      // Add enough to reach 50 total
-      selectedRecommendations = [...sadSongs, ...remainingSongs.slice(0, 50 - sadSongs.length)];
-    }
-    
-    // Ensure we have at most 50 recommendations
-    selectedRecommendations = selectedRecommendations.slice(0, 50);
-    
     // Ensure recommendations have all required properties
-    const cleanedRecommendations = selectedRecommendations.map(rec => ({
+    const cleanedRecommendations = allRecommendations.map(rec => ({
       name: rec.name || "Unknown Track",
       artist: rec.artist || "Unknown Artist",
       genre: rec.genre || "Unknown Genre",
       score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
       id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
-      albumCover: rec.albumCover || '',
-      // Include sadness indicators for debugging/display
-      valence: rec.valence || rec.valence_standardized || 'N/A',
-      energy: rec.energy || rec.energy_standardized || 'N/A',
-      acousticness: rec.acousticness || rec.acousticness_standardized || 'N/A'
+      albumCover: rec.albumCover || ''
     }));
     
-    // Store all sad recommendations for potential use in playlist creation
+    // Store all 50 recommendations for potential use in playlist creation
     currentPlaylistType = "Chill";
     console.log(`Setting current playlist type to: ${currentPlaylistType}`);
     
@@ -1960,7 +1918,7 @@ console.log(`Randomly selected ${selectedRecommendations.length} recommendations
 // Display the recommendations with the correct playlist type
 renderRecommendationsTemplate("csv-recommendations-results", {
   recommendations: selectedRecommendations,
-  playlistType: currentPlaylistType  // This is the important part
+  playlistType: currentPlaylistType  
 });
   } catch (error) {
     console.error("Error generating chill recommendations:", error);
