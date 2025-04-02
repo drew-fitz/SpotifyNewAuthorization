@@ -9,6 +9,7 @@ const authorizationEndpoint = "https://accounts.spotify.com/authorize";
 const tokenEndpoint = "https://accounts.spotify.com/api/token";
 const scope = 'user-read-private user-read-email user-library-read user-top-read user-read-recently-played playlist-modify-private playlist-read-private';
 
+let lastDisplayedRecommendations = null;
 
 // Token management
 const currentToken = {
@@ -1597,6 +1598,8 @@ async function generateCSVRecommendations() {
   }
 }
 
+let currentPlaylistType = null;
+
 // Function to generate happy recommendations and format songs nicely using the Spotify API
 async function generateHappyRecommendations() {
   try {
@@ -1702,22 +1705,25 @@ async function generateHappyRecommendations() {
     }));
     
     // Store all happy recommendations for potential use in playlist creation
+    currentPlaylistType = "Happy";
+    console.log(`Setting current playlist type to: ${currentPlaylistType}`);
+    
+    // Store all happy recommendations for potential use in playlist creation
     lastCsvRecommendations = cleanedRecommendations;
     console.log(`Stored ${lastCsvRecommendations.length} cleaned happy recommendations`);
     
-    // Randomly select 10 from the filtered happy recommendations to display
-    const displayCount = Math.min(10, cleanedRecommendations.length);
-    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
-    const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
-    
-    console.log(`Randomly selected ${selectedRecommendations.length} happy recommendations to display`);
-    
-    // Display only the randomly selected recommendations
-    renderRecommendationsTemplate("csv-recommendations-results", {
-      recommendations: selectedRecommendations,
-      isHappyRecommendation: true
-    });
-    
+    // Randomly select 10 from the filtered recommendations to display
+const displayCount = Math.min(10, cleanedRecommendations.length);
+const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
+const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
+
+console.log(`Randomly selected ${selectedRecommendations.length} recommendations to display`);
+
+// Display the recommendations with the correct playlist type
+renderRecommendationsTemplate("csv-recommendations-results", {
+  recommendations: selectedRecommendations,
+  playlistType: currentPlaylistType  // This is the important part
+});
   } catch (error) {
     console.error("Error generating happy recommendations:", error);
     document.getElementById('csv-recommendations-results').innerHTML = 
@@ -1797,158 +1803,25 @@ async function generateSadRecommendations() {
     }));
     
     // Store all 50 recommendations for potential use in playlist creation
-    lastCsvRecommendations = cleanedRecommendations;
-    console.log(`Stored ${lastCsvRecommendations.length} cleaned recommendations`);
-    
-    // Randomly select 10 from the 50 recommendations to display
-    const displayCount = Math.min(10, cleanedRecommendations.length);
-    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
-    const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
-    
-    console.log(`Randomly selected ${selectedRecommendations.length} recommendations to display`);
-    
-    // Display only the randomly selected recommendations
-    renderRecommendationsTemplate("csv-recommendations-results", {
-      recommendations: selectedRecommendations
-    });
-    
-  } catch (error) {
-    console.error("Error generating recommendations:", error);
-    document.getElementById('csv-recommendations-results').innerHTML = 
-      `<div class="error-message">Error generating recommendations: ${error.message}</div>`;
-  }
-}
-
-// Function to generate chill recommendations and format songs nicely using the Spotify API
-async function generateSadRecommendations() {
-  try {
-    // Show loading indicator
-    document.getElementById('csv-recommendations-results').innerHTML = 
-      '<p class="loading">Generating sad music recommendations...</p>';
-    
-    // Check if engine and data exist
-    if (!recommendationEngine) {
-      console.log("Creating recommendation engine");
-      recommendationEngine = new window.RecommendationEngine();
-    }
-    
-    if (!recommendationEngine.dataset || !recommendationEngine.likedSongs) {
-      console.error("Missing data:", {
-        dataset: Boolean(recommendationEngine.dataset),
-        likedSongs: Boolean(recommendationEngine.likedSongs)
-      });
-      throw new Error("Please load both a dataset and liked songs first");
-    }
-    
-    console.log("Starting sad recommendation generation with:", {
-      datasetSize: recommendationEngine.dataset.length,
-      likedSongsSize: recommendationEngine.likedSongs.length
-    });
-    
-    // Verify dataset has required properties
-    const sampleSong = recommendationEngine.dataset[0];
-    console.log("Sample song from dataset:", sampleSong);
-    
-    // Make sure required features exist in the dataset
-    const requiredFeatures = ['popularity', 'danceability', 'energy', 'acousticness', 'valence', 'tempo'];
-    const missingFeatures = requiredFeatures.filter(feature => 
-      !sampleSong.hasOwnProperty(feature) && !sampleSong.hasOwnProperty(`${feature}_standardized`)
-    );
-    
-    if (missingFeatures.length > 0) {
-      console.warn("Dataset is missing these features:", missingFeatures);
-      // If features are missing, add dummy values
-      recommendationEngine.dataset.forEach(song => {
-        missingFeatures.forEach(feature => {
-          song[feature] = Math.random() * 0.5 + 0.25; // Random value between 0.25 and 0.75
-        });
-      });
-      // Reprocess data with added features
-      recommendationEngine.preprocessData();
-    }
-    
-    // Force preprocessing before generating recommendations
-    console.log("Preprocessing data...");
-    recommendationEngine.preprocessData();
-    
-    // Generate 100 recommendations to have a larger pool to filter from
-    console.log("Calling recommendSongs method to get 100 initial recommendations...");
-    const allRecommendations = recommendationEngine.recommendSongs(100);
-    console.log(`Generated ${allRecommendations.length} total recommendations`);
-    
-    if (!allRecommendations || allRecommendations.length === 0) {
-      throw new Error("No recommendations were generated");
-    }
-    
-    // Filter for sad songs based on audio features
-    // Low valence (happiness), lower energy, higher acousticness
-    console.log("Filtering for sad songs based on audio features...");
-    const sadSongs = allRecommendations.filter(song => {
-      // Prioritize low valence (happiness) as the main indicator of sad songs
-      const valence = song.valence || song.valence_standardized || 0.5;
-      const energy = song.energy || song.energy_standardized || 0.5;
-      const acousticness = song.acousticness || song.acousticness_standardized || 0.5;
-      
-      // Calculate a "sadness score" - lower is sadder
-      // Valence has the most weight in determining sad songs
-      const sadnessScore = valence * 0.6 + energy * 0.3 - acousticness * 0.1;
-      
-      // Return true for songs with low sadness score (sad songs)
-      return sadnessScore < 0.4;
-    });
-    
-    console.log(`Found ${sadSongs.length} sad songs after filtering`);
-    
-    // If we don't have enough sad songs, include some from the original recommendations
-    let selectedRecommendations = sadSongs;
-    if (sadSongs.length < 10) {
-      console.log("Not enough sad songs found, adding some general recommendations");
-      // Sort remaining songs by valence (ascending) to get the saddest of what's left
-      const remainingSongs = allRecommendations
-        .filter(song => !sadSongs.includes(song))
-        .sort((a, b) => {
-          const valenceA = a.valence || a.valence_standardized || 0.5;
-          const valenceB = b.valence || b.valence_standardized || 0.5;
-          return valenceA - valenceB;
-        });
-      
-      // Add enough to reach 50 total
-      selectedRecommendations = [...sadSongs, ...remainingSongs.slice(0, 50 - sadSongs.length)];
-    }
-    
-    // Ensure we have at most 50 recommendations
-    selectedRecommendations = selectedRecommendations.slice(0, 50);
-    
-    // Ensure recommendations have all required properties
-    const cleanedRecommendations = selectedRecommendations.map(rec => ({
-      name: rec.name || "Unknown Track",
-      artist: rec.artist || "Unknown Artist",
-      genre: rec.genre || "Unknown Genre",
-      score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
-      id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
-      albumCover: rec.albumCover || '',
-      // Include sadness indicators for debugging/display
-      valence: rec.valence || rec.valence_standardized || 'N/A',
-      energy: rec.energy || rec.energy_standardized || 'N/A',
-      acousticness: rec.acousticness || rec.acousticness_standardized || 'N/A'
-    }));
+    currentPlaylistType = "Sad";
+    console.log(`Setting current playlist type to: ${currentPlaylistType}`);
     
     // Store all sad recommendations for potential use in playlist creation
     lastCsvRecommendations = cleanedRecommendations;
     console.log(`Stored ${lastCsvRecommendations.length} cleaned sad recommendations`);
     
-    // Randomly select 10 from the sad recommendations to display
-    const displayCount = Math.min(10, cleanedRecommendations.length);
-    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
-    const displayRecommendations = shuffledRecommendations.slice(0, displayCount);
-    
-    console.log(`Randomly selected ${displayRecommendations.length} sad recommendations to display`);
-    
-    // Display only the randomly selected recommendations
-    renderRecommendationsTemplate("csv-recommendations-results", {
-      recommendations: displayRecommendations
-    });
-    
+    // Randomly select 10 from the filtered recommendations to display
+const displayCount = Math.min(10, cleanedRecommendations.length);
+const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
+const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
+
+console.log(`Randomly selected ${selectedRecommendations.length} recommendations to display`);
+
+// Display the recommendations with the correct playlist type
+renderRecommendationsTemplate("csv-recommendations-results", {
+  recommendations: selectedRecommendations,
+  playlistType: currentPlaylistType  // This is the important part
+});
   } catch (error) {
     console.error("Error generating sad recommendations:", error);
     document.getElementById('csv-recommendations-results').innerHTML = 
@@ -2037,7 +1910,6 @@ async function generateChillRecommendations() {
     console.log(`Found ${sadSongs.length} sad songs after filtering`);
     
     // If we don't have enough sad songs, include some from the original recommendations
-    let selectedRecommendations = sadSongs;
     if (sadSongs.length < 10) {
       console.log("Not enough sad songs found, adding some general recommendations");
       // Sort remaining songs by valence (ascending) to get the saddest of what's left
@@ -2071,30 +1943,34 @@ async function generateChillRecommendations() {
     }));
     
     // Store all sad recommendations for potential use in playlist creation
+    currentPlaylistType = "Chill";
+    console.log(`Setting current playlist type to: ${currentPlaylistType}`);
+    
+    // Store all chill recommendations for potential use in playlist creation
     lastCsvRecommendations = cleanedRecommendations;
-    console.log(`Stored ${lastCsvRecommendations.length} cleaned sad recommendations`);
+    console.log(`Stored ${lastCsvRecommendations.length} cleaned chill recommendations`);
     
-    // Randomly select 10 from the sad recommendations to display
-    const displayCount = Math.min(10, cleanedRecommendations.length);
-    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
-    const displayRecommendations = shuffledRecommendations.slice(0, displayCount);
-    
-    console.log(`Randomly selected ${displayRecommendations.length} sad recommendations to display`);
-    
-    // Display only the randomly selected recommendations
-    renderRecommendationsTemplate("csv-recommendations-results", {
-      recommendations: displayRecommendations
-    });
-    
+    // Randomly select 10 from the filtered recommendations to display
+const displayCount = Math.min(10, cleanedRecommendations.length);
+const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
+const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
+
+console.log(`Randomly selected ${selectedRecommendations.length} recommendations to display`);
+
+// Display the recommendations with the correct playlist type
+renderRecommendationsTemplate("csv-recommendations-results", {
+  recommendations: selectedRecommendations,
+  playlistType: currentPlaylistType  // This is the important part
+});
   } catch (error) {
-    console.error("Error generating sad recommendations:", error);
+    console.error("Error generating chill recommendations:", error);
     document.getElementById('csv-recommendations-results').innerHTML = 
-      `<div class="error-message">Error generating sad recommendations: ${error.message}</div>`;
+      `<div class="error-message">Error generating chill recommendations: ${error.message}</div>`;
   }
 }
 
 // Function to generate energetic recommendations and format songs nicely using the Spotify API
-async function generateHappyRecommendations() {
+async function generateEnergeticRecommendations() {
   try {
     // Show loading indicator
     document.getElementById('csv-recommendations-results').innerHTML = 
@@ -2197,33 +2073,36 @@ async function generateHappyRecommendations() {
       albumCover: rec.albumCover || ''
     }));
     
-    // Store all happy recommendations for potential use in playlist creation
+    // Store all energetic recommendations for potential use in playlist creation
+    currentPlaylistType = "Energetic";
+    console.log(`Setting current playlist type to: ${currentPlaylistType}`);
+    
+    // Store all energetic recommendations for potential use in playlist creation
     lastCsvRecommendations = cleanedRecommendations;
-    console.log(`Stored ${lastCsvRecommendations.length} cleaned happy recommendations`);
+    console.log(`Stored ${lastCsvRecommendations.length} cleaned energetic recommendations`);
     
-    // Randomly select 10 from the filtered happy recommendations to display
-    const displayCount = Math.min(10, cleanedRecommendations.length);
-    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
-    const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
-    
-    console.log(`Randomly selected ${selectedRecommendations.length} happy recommendations to display`);
-    
-    // Display only the randomly selected recommendations
-    renderRecommendationsTemplate("csv-recommendations-results", {
-      recommendations: selectedRecommendations,
-      isHappyRecommendation: true
-    });
-    
+   // Randomly select 10 from the filtered recommendations to display
+const displayCount = Math.min(10, cleanedRecommendations.length);
+const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
+const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
+
+console.log(`Randomly selected ${selectedRecommendations.length} recommendations to display`);
+
+// Display the recommendations with the correct playlist type
+renderRecommendationsTemplate("csv-recommendations-results", {
+  recommendations: selectedRecommendations,
+  playlistType: currentPlaylistType  // This is the important part
+});
   } catch (error) {
-    console.error("Error generating happy recommendations:", error);
+    console.error("Error generating energetic recommendations:", error);
     document.getElementById('csv-recommendations-results').innerHTML = 
-      `<div class="error-message">Error generating happy recommendations: ${error.message}</div>`;
+      `<div class="error-message">Error generating energetic recommendations: ${error.message}</div>`;
   }
 }
 
 
 // Template rendering function for song recommendations
-function renderRecommendationsTemplate(targetId, { recommendations }) {
+function renderRecommendationsTemplate(targetId, { recommendations, playlistType }) {
   const targetElement = document.getElementById(targetId);
   if (!targetElement) {
     console.error(`Target element not found: ${targetId}`);
@@ -2235,13 +2114,22 @@ function renderRecommendationsTemplate(targetId, { recommendations }) {
     return;
   }
 
+  // Store the displayed recommendations globally so we can save just these songs
+  lastDisplayedRecommendations = recommendations;
+  console.log(`Stored ${lastDisplayedRecommendations.length} displayed recommendations for potential playlist creation`);
+
   // Clear the existing content
   targetElement.innerHTML = "";
 
   // Create a container for the recommendations
   const recommendationsContainer = document.createElement("div");
   recommendationsContainer.className = "song-recommendations";
-  recommendationsContainer.innerHTML = "<h3>Song Recommendations</h3>";
+  
+  // Update heading to include playlist type if available
+  const headingText = playlistType 
+    ? `${playlistType} Song Recommendations` 
+    : "Song Recommendations";
+  recommendationsContainer.innerHTML = `<h3>${headingText}</h3>`;
 
   // Create the track list and append each track dynamically
   const trackList = document.createElement("div");
@@ -2297,10 +2185,12 @@ function renderRecommendationsTemplate(targetId, { recommendations }) {
   const playlistActions = document.createElement("div");
   playlistActions.className = "playlist-actions";
   
-  // Create save to Spotify button
+  // Create save to Spotify button with playlist type in the text
   const saveButton = document.createElement("button");
   saveButton.className = "save-spotify-btn";
-  saveButton.textContent = "Save to Spotify";
+  saveButton.textContent = playlistType 
+    ? `Save ${playlistType} Playlist to Spotify` 
+    : "Save to Spotify";
   saveButton.onclick = function() {
     window.saveCSVRecommendationsToSpotify();
   };
@@ -2314,19 +2204,23 @@ function renderRecommendationsTemplate(targetId, { recommendations }) {
   targetElement.appendChild(recommendationsContainer);
 }
 
-// Function to save CSV recommendations to Spotify playlist
+// Fix the save function to save only the displayed 10 songs
 async function saveCSVRecommendationsToSpotify() {
-  if (!lastCsvRecommendations || lastCsvRecommendations.length === 0) {
+  // Check if we have displayed recommendations
+  if (!lastDisplayedRecommendations || lastDisplayedRecommendations.length === 0) {
     alert("Please generate recommendations first");
     return;
   }
   
   try {
-    // Show loading indicator
-    const saveButton = document.querySelector('#csv-recommendations-container .save-spotify-btn');
+    console.log(`Saving ${currentPlaylistType || "Recommended"} playlist to Spotify with ${lastDisplayedRecommendations.length} songs...`);
+    
+    const saveButton = document.querySelector('#csv-recommendations-results .save-spotify-btn');
     if (saveButton) {
       saveButton.textContent = "Saving...";
       saveButton.disabled = true;
+    } else {
+      console.warn("Save button not found in #csv-recommendations-results");
     }
     
     // Convert local recommendations to Spotify format if needed
@@ -2334,7 +2228,8 @@ async function saveCSVRecommendationsToSpotify() {
     const tracksToFind = [];
     
     // Separate tracks with Spotify IDs from those that need to be searched
-    lastCsvRecommendations.forEach(track => {
+    // IMPORTANT: Use lastDisplayedRecommendations instead of lastCsvRecommendations
+    lastDisplayedRecommendations.forEach(track => {
       if (track.id && !track.id.startsWith('local-')) {
         trackUris.push(`spotify:track:${track.id}`);
       } else {
@@ -2364,8 +2259,9 @@ async function saveCSVRecommendationsToSpotify() {
       }
     }
     
-    // Create and save playlist
-    const playlistName = "Spotify Genie Recs";
+    // Use the currentPlaylistType when creating the playlist name
+    const playlistType = currentPlaylistType || "Recommended";
+    const playlistName = `${playlistType} Songs by Spotify Genie`;
     const result = await savePlaylistToSpotify(playlistName, trackUris);
     
     // Update UI based on result
@@ -2375,9 +2271,9 @@ async function saveCSVRecommendationsToSpotify() {
       const successMessage = document.createElement('div');
       successMessage.className = 'success-message';
       successMessage.innerHTML = `
-        <p>Playlist "${result.playlistName}" saved successfully!</p>
+        <p>Playlist "${result.playlistName}" with ${trackUris.length} songs saved successfully!</p>
         <a href="${result.playlistUrl}" target="_blank" class="spotify-button">
-          <i class="fab fa-spotify"></i> Open in Spotify
+          <i class="fab fa-spotify" style="color: green;"></i> Open in Spotify
         </a>
       `;
       
@@ -2395,7 +2291,7 @@ async function saveCSVRecommendationsToSpotify() {
       
       // Reset button
       if (saveButton) {
-        saveButton.textContent = "Save to Spotify";
+        saveButton.textContent = `Save ${playlistType} Playlist to Spotify`;
         saveButton.disabled = false;
       }
     }
@@ -2404,9 +2300,9 @@ async function saveCSVRecommendationsToSpotify() {
     alert(`Error saving recommendations: ${error.message}`);
     
     // Reset button
-    const saveButton = document.querySelector('#csv-recommendations-container .save-spotify-btn');
+    const saveButton = document.querySelector('#csv-recommendations-results .save-spotify-btn');
     if (saveButton) {
-      saveButton.textContent = "Save to Spotify";
+      saveButton.textContent = `Save ${currentPlaylistType || "Recommendations"} to Spotify`;
       saveButton.disabled = false;
     }
   }
