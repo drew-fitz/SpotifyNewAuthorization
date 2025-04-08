@@ -2054,10 +2054,10 @@ async function useSpotifyLikedSongs() {
     document.getElementById('liked-songs-status').textContent = "Loading Spotify liked songs...";
    
     // Get user's saved tracks from Spotify
-    const allTracks = await getUserSavedTracks(500); // Grabs up to 500 liked songs from the user
-    console.log(`Retrieved ${tracks.length} tracks from Spotify API:`, allTracks);
+    const allTracks = await getUserSavedTracks(50); // Grabs up to 500 liked songs from the user
+    console.log(`Retrieved ${allTracks.length} tracks from Spotify API:`, allTracks);
 
-    const tracks = allTracks.sort(() => 0.5 - Math.random()).slice(0, 50); // Randomly picks 50 liked songs to give to recommendation engine 
+    const tracks = allTracks.sort(() => 0.5 - Math.random()).slice(0, 10); // Randomly picks 50 liked songs to give to recommendation engine 
     console.log(`Selected ${tracks.length} random tracks for recommendation engine:`, tracks);
     
     // Initialize recommendation engine if not already done
