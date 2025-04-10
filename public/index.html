@@ -253,34 +253,18 @@
 <!-- CSV Recommendations Container Template -->
 <template id="csv-recommendations-container-template">
   <div class="csv-recommendations">
-    <h3>CSV-Based Song Recommendations</h3>
-    <p>Get personalized song recommendations based on your taste by uploading a CSV file.</p>
-    
-    <div class="upload-section">
-      <div class="upload-container">
-        <h4>1. Upload Song Dataset</h4>
-        <p>Upload a CSV file containing song data with audio features (popularity, danceability, energy, etc.)</p>
-        <input type="file" id="dataset-upload" accept=".csv" onchange="handleDatasetUpload(event)">
-        <p id="dataset-status">No dataset loaded</p>
-      </div>
+    <h1>Spotify Genie</h1>
       
-      <div class="upload-container">
-        <h4>2. Your Liked Songs</h4>
-        <p>Either upload a CSV of your liked songs or use your Spotify liked songs</p>
-        <input type="file" id="liked-songs-upload" accept=".csv" onchange="handleLikedSongsUpload(event)">
-        <button onclick="useSpotifyLikedSongs()" class="secondary-button">Use Spotify Liked Songs</button>
-        <p id="liked-songs-status">No liked songs loaded</p>
-      </div>
-    </div>
     
     <div class="recommendations-actions">
-      <h4>3. Generate Recommendations</h4>
       <button id="generate-recommendations-btn" onclick="generateCSVRecommendations()" disabled>Generate Recommendations</button>
+      <button onclick="useSpotifyLikedSongs()" class="secondary-button">Refresh Songs Used</button>
+      <p id="liked-songs-status">No liked songs loaded</p>
     </div>
 
     <!-- Updated mood selection UI to add disabled state handling -->
 <div class="mood-selection">
-  <h4>4. Filter by Mood</h4>
+  <h4>Filter by Mood</h4>
   <p>Get recommendations that match a specific mood</p>
   <div class="mood-buttons">
     <button onclick="generateHappyRecommendations()" class="mood-btn happy-btn" id="happy-mood-btn">
@@ -389,10 +373,12 @@
 <script>
 // Function to update mood button states
 function updateMoodButtonStates() {
+  // Check if recommendation engine exists and has both dataset and liked songs
   const dataReady = window.recommendationEngine && 
                    window.recommendationEngine.dataset && 
                    window.recommendationEngine.likedSongs;
   
+  // Find all mood buttons
   const moodButtons = [
     document.getElementById('happy-mood-btn'),
     document.getElementById('sad-mood-btn'),
@@ -403,8 +389,27 @@ function updateMoodButtonStates() {
   moodButtons.forEach(btn => {
     if (btn) {
       btn.disabled = !dataReady;
+      // Add additional class to show they're disabled
+      if (!dataReady) {
+        btn.classList.add('disabled');
+        // Add title attributes to explain why they're disabled
+        if (!window.recommendationEngine || !window.recommendationEngine.dataset) {
+          btn.title = "Waiting for dataset to load...";
+        } else if (!window.recommendationEngine.likedSongs) {
+          btn.title = "Please load your liked songs first";
+        }
+      } else {
+        btn.classList.remove('disabled');
+        btn.title = "";
+      }
     }
   });
+  
+  // Also update the generate-recommendations-btn
+  const generateBtn = document.getElementById('generate-recommendations-btn');
+  if (generateBtn) {
+    generateBtn.disabled = !dataReady;
+  }
 }
 
 // Update buttons when data is loaded
