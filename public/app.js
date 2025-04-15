@@ -1766,12 +1766,12 @@ async function generateCSVRecommendations() {
   }
 }
 
-// Function to generate happy recommendations and format songs nicely using the Spotify API
+// Function to generate uplifting happy recommendations using sophisticated audio features
 async function generateHappyRecommendations() {
   try {
     // Show loading indicator
     document.getElementById('csv-recommendations-results').innerHTML = 
-      '<p class="loading">Generating happy song recommendations...</p>';
+      '<p class="loading">Generating uplifting happy song recommendations...</p>';
     
     // Check if engine exists
     if (!window.recommendationEngine) {
@@ -1804,18 +1804,21 @@ async function generateHappyRecommendations() {
       }
     }
     
-    // Rest of your existing happy recommendations code...
     console.log("Starting happy song recommendation generation with:", {
       datasetSize: window.recommendationEngine.dataset.length,
       likedSongsSize: window.recommendationEngine.likedSongs.length
     });
     
-    // Rest of the existing code...
+    // Get a sample song to check the dataset structure
     const sampleSong = window.recommendationEngine.dataset[0];
     console.log("Sample song from dataset:", sampleSong);
     
     // Make sure required features exist in the dataset
-    const requiredFeatures = ['popularity', 'danceability', 'energy', 'acousticness', 'valence', 'tempo'];
+    const requiredFeatures = [
+      'popularity', 'danceability', 'energy', 'acousticness', 
+      'valence', 'tempo', 'liveness', 'instrumentalness', 'loudness', 'mode', 'key'
+    ];
+    
     const missingFeatures = requiredFeatures.filter(feature => 
       !sampleSong.hasOwnProperty(feature) && !sampleSong.hasOwnProperty(`${feature}_standardized`)
     );
@@ -1836,77 +1839,220 @@ async function generateHappyRecommendations() {
     console.log("Preprocessing data...");
     window.recommendationEngine.preprocessData();
     
-    // Generate 100 recommendations instead of 50 for better filtering
-    console.log("Calling recommendSongs method to get 100 recommendations...");
-    const allRecommendations = window.recommendationEngine.recommendSongs(100);
+    // Generate 200 recommendations
+    console.log("Calling recommendSongs method to get 200 recommendations...");
+    const allRecommendations = window.recommendationEngine.recommendSongs(200);
     console.log(`Generated ${allRecommendations.length} total recommendations`);
     
     if (!allRecommendations || allRecommendations.length === 0) {
       throw new Error("No recommendations were generated. Try using different liked songs.");
     }
     
-    // Filter recommendations to prioritize happy songs (high valence and energy)
-    const happyRecommendations = allRecommendations
-      .filter(song => {
-        // Check if song has valence and energy properties
-        const hasValence = song.hasOwnProperty('valence') || song.hasOwnProperty('valence_standardized');
-        const hasEnergy = song.hasOwnProperty('energy') || song.hasOwnProperty('energy_standardized');
-        
-        if (!hasValence || !hasEnergy) {
-          return true; // Include songs without these properties to avoid empty results
+    // Calculate a comprehensive "happiness score" using multiple attributes
+    const recommendationsWithHappinessScore = allRecommendations.map(song => {
+      // Get all relevant attributes (or their standardized versions)
+      const valence = song.valence || song.valence_standardized || 0.5;
+      const energy = song.energy || song.energy_standardized || 0.5;
+      const danceability = song.danceability || song.danceability_standardized || 0.5;
+      const tempo = song.tempo || song.tempo_standardized || 120;
+      const mode = song.mode || song.mode_standardized || 0; // Major (1) tends to sound happier than minor (0)
+      const acousticness = song.acousticness || song.acousticness_standardized || 0.5;
+      const liveness = song.liveness || song.liveness_standardized || 0.5;
+      const loudness = song.loudness || song.loudness_standardized || -10;
+      const popularity = song.popularity || song.popularity_standardized || 50;
+      
+      // Normalize tempo to a 0-1 scale (assuming typical range of 40-200 BPM)
+      // For happy music, we prefer moderate to upbeat tempo (not too slow, not too fast)
+      // Peak happiness around 120-140 BPM
+      let normalizedTempo = 0;
+      if (tempo >= 40 && tempo <= 200) {
+        if (tempo >= 110 && tempo <= 150) {
+          // Peak happiness range
+          normalizedTempo = 1.0;
+        } else if (tempo < 110) {
+          // Scale up from 40 to 110
+          normalizedTempo = (tempo - 40) / 70;
+        } else {
+          // Scale down from 150 to 200
+          normalizedTempo = 1 - ((tempo - 150) / 50);
         }
-        
-        // Get the valence and energy values
-        const valence = song.valence || song.valence_standardized || 0;
-        const energy = song.energy || song.energy_standardized || 0;
-        
-        // Consider songs with high valence (happiness) and reasonable energy as "happy"
-        return valence > 0.6 && energy > 0.5;
-      })
-      .sort((a, b) => {
-        // Sort by combined valence and energy score (prioritizing valence)
-        const aHappyScore = ((a.valence || a.valence_standardized || 0) * 0.7) + 
-                          ((a.energy || a.energy_standardized || 0) * 0.3);
-        const bHappyScore = ((b.valence || b.valence_standardized || 0) * 0.7) + 
-                          ((b.energy || b.energy_standardized || 0) * 0.3);
-        return bHappyScore - aHappyScore;
-      })
-      .slice(0, 50); // Take top 50 happy songs
+      }
+      normalizedTempo = Math.max(0, Math.min(1, normalizedTempo));
+      
+      // Normalize loudness (typically ranges from -60 to 0 dB)
+      // For happy music, medium to higher loudness is preferable (-15 to -5 dB is ideal)
+      let normalizedLoudness = 0;
+      if (loudness >= -60 && loudness <= 0) {
+        if (loudness >= -15 && loudness <= -5) {
+          // Ideal loudness range
+          normalizedLoudness = 1.0;
+        } else if (loudness < -15) {
+          // Scale up from -60 to -15
+          normalizedLoudness = (loudness + 60) / 45;
+        } else {
+          // Scale down from -5 to 0
+          normalizedLoudness = 1 - ((loudness + 5) / 5);
+        }
+      }
+      normalizedLoudness = Math.max(0, Math.min(1, normalizedLoudness));
+      
+      // Normalize mode (0 or 1) to favor major keys
+      const normalizedMode = mode === 1 ? 1 : 0.4; // Major mode gets full score, minor gets partial
+      
+      // Normalize popularity to 0-1 scale
+      const normalizedPopularity = popularity / 100;
+      
+      // Calculate happiness score with weighted components
+      const happinessScore = (
+        valence * 0.35 +                  // High valence (emotional positivity) is crucial
+        energy * 0.20 +                   // Higher energy for upbeat feel
+        danceability * 0.15 +             // Higher danceability for fun factor
+        normalizedTempo * 0.10 +          // Medium to upbeat tempo (not too slow)
+        normalizedMode * 0.10 +           // Prefer major keys for happier sound
+        normalizedLoudness * 0.05 +       // Medium to higher loudness
+        liveness * 0.05                   // Some live audience feel can boost happiness
+      );
+      
+      return {
+        ...song,
+        happinessScore
+      };
+    });
+    
+    // Filter and sort by happiness score (higher is happier)
+    // First, get all songs that meet our base criteria for happiness
+    const potentialHappyRecommendations = recommendationsWithHappinessScore
+      .filter(song => song.valence > 0.5); // Slightly relaxed valence requirement
+    
+    console.log(`Found ${potentialHappyRecommendations.length} potential happy songs with valence > 0.5`);
+    
+    // If not enough songs meet that criteria, just take the top songs by happiness score
+    const happyRecommendations = potentialHappyRecommendations.length >= 50 
+      ? potentialHappyRecommendations.sort((a, b) => b.happinessScore - a.happinessScore).slice(0, 100)
+      : recommendationsWithHappinessScore.sort((a, b) => b.happinessScore - a.happinessScore).slice(0, 100);
     
     console.log(`Filtered down to ${happyRecommendations.length} happy recommendations`);
     
-    // Ensure recommendations have all required properties
-    const cleanedRecommendations = happyRecommendations.map(rec => ({
-      name: rec.name || "Unknown Track",
-      artist: rec.artist || "Unknown Artist",
-      genre: rec.genre || "Unknown Genre",
-      score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
-      // Add happiness score for reference
-      happinessScore: (((rec.valence || rec.valence_standardized || 0) * 0.7) + 
-                     ((rec.energy || rec.energy_standardized || 0) * 0.3)).toFixed(2),
-      id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
-      albumCover: rec.albumCover || ''
-    }));
+    // If we still don't have enough recommendations, log detailed information for debugging
+    if (happyRecommendations.length < 10) {
+      console.log("WARNING: Not enough happy songs found. Showing detailed diagnostics:");
+      
+      // Check all audio features in the dataset
+      const audioFeatureStats = {};
+      requiredFeatures.forEach(feature => {
+        const values = allRecommendations
+          .map(song => song[feature] || song[`${feature}_standardized`] || 0)
+          .filter(val => typeof val === 'number');
+        
+        if (values.length > 0) {
+          const min = Math.min(...values);
+          const max = Math.max(...values);
+          const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
+          
+          audioFeatureStats[feature] = { min, max, avg };
+        } else {
+          audioFeatureStats[feature] = "No valid values found";
+        }
+      });
+      
+      console.log("Audio feature statistics:", audioFeatureStats);
+      
+      // Print happiness scores distribution
+      const happinessScores = recommendationsWithHappinessScore.map(s => s.happinessScore);
+      const minScore = Math.min(...happinessScores);
+      const maxScore = Math.max(...happinessScores);
+      const avgScore = happinessScores.reduce((sum, val) => sum + val, 0) / happinessScores.length;
+      
+      console.log("Happiness scores - Min:", minScore, "Max:", maxScore, "Avg:", avgScore);
+      
+      // Show the top 10 songs with their happiness score components
+      const topSongs = recommendationsWithHappinessScore
+        .sort((a, b) => b.happinessScore - a.happinessScore)
+        .slice(0, 10);
+      
+      console.log("Top 10 songs by happiness score with components:");
+      topSongs.forEach(song => {
+        const valence = song.valence || song.valence_standardized || 0;
+        const energy = song.energy || song.energy_standardized || 0;
+        const danceability = song.danceability || song.danceability_standardized || 0;
+        
+        console.log(`Song: ${song.name} - Score: ${song.happinessScore.toFixed(2)} - Valence: ${valence.toFixed(2)} - Energy: ${energy.toFixed(2)} - Danceability: ${danceability.toFixed(2)}`);
+      });
+    }
     
-    // Store all happy recommendations for potential use in playlist creation
-    currentPlaylistType = "Happy";
+    // Add descriptive happiness categories based on score
+    // Using slightly lower thresholds to account for the adjusted scoring algorithm
+    const happinessCategories = [
+      { threshold: 0.80, label: "Euphoric" },
+      { threshold: 0.75, label: "Ecstatic" },
+      { threshold: 0.70, label: "Joyful" },
+      { threshold: 0.65, label: "Uplifting" },
+      { threshold: 0.60, label: "Cheerful" },
+      { threshold: 0, label: "Positive" }
+    ];
+    
+    // Ensure recommendations have all required properties and add happiness category
+    const cleanedRecommendations = happyRecommendations.map(rec => {
+      // Determine happiness category based on score
+      const category = happinessCategories.find(cat => rec.happinessScore >= cat.threshold);
+      
+      // Get underlying attributes for additional context
+      const valence = rec.valence || rec.valence_standardized || 0;
+      const energy = rec.energy || rec.energy_standardized || 0;
+      const danceability = rec.danceability || rec.danceability_standardized || 0;
+      const tempo = rec.tempo || rec.tempo_standardized || 0;
+      const mode = rec.mode || rec.mode_standardized || 0;
+      
+      return {
+        name: rec.name || "Unknown Track",
+        artist: rec.artist || "Unknown Artist",
+        genre: rec.genre || "Unknown Genre",
+        score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
+        happinessScore: rec.happinessScore.toFixed(2),
+        happinessCategory: category ? category.label : "Positive",
+        // Add important attributes that contribute to happiness
+        valence: valence.toFixed(2),
+        energy: energy.toFixed(2),
+        danceability: danceability.toFixed(2),
+        tempo: Math.round(tempo),
+        mode: mode === 1 ? "Major" : "Minor",
+        id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
+        albumCover: rec.albumCover || ''
+      };
+    });
+    
+    // Store playlist type and recommendations
+    currentPlaylistType = "Uplifting Happy";
     console.log(`Setting current playlist type to: ${currentPlaylistType}`);
+    
+    // Add timestamp to help ensure we get different recommendations each time
+    console.log(`Recommendation generated at: ${new Date().toISOString()}`);
+    
+    // Add a small cache-busting random value to ensure we get variety
+    window.lastHappyRecommendationRun = Date.now() + Math.floor(Math.random() * 1000);
     
     // Store all happy recommendations for potential use in playlist creation
     lastCsvRecommendations = cleanedRecommendations;
     console.log(`Stored ${lastCsvRecommendations.length} cleaned happy recommendations`);
     
-    // Randomly select 10 from the filtered recommendations to display
-    const displayCount = Math.min(10, cleanedRecommendations.length);
-    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
-    const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
-
-    console.log(`Randomly selected ${selectedRecommendations.length} recommendations to display`);
+    // Randomly select 10 from the top recommendations using Fisher-Yates shuffle
+    const shuffledRecommendations = [...cleanedRecommendations];
+    
+    // Fisher-Yates shuffle algorithm for true randomness
+    for (let i = shuffledRecommendations.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledRecommendations[i], shuffledRecommendations[j]] = 
+        [shuffledRecommendations[j], shuffledRecommendations[i]];
+    }
+    
+    // Take 10 random songs from our shuffled array
+    const selectedRecommendations = shuffledRecommendations.slice(0, 10);
+    console.log(`Randomly selected ${selectedRecommendations.length} recommendations from top 100 happiest songs`);
 
     // Display the recommendations with the correct playlist type
     renderRecommendationsTemplate("csv-recommendations-results", {
       recommendations: selectedRecommendations,
-      playlistType: currentPlaylistType  // This is the important part
+      playlistType: currentPlaylistType
     });
   } catch (error) {
     console.error("Error generating happy recommendations:", error);
@@ -1918,7 +2064,7 @@ async function generateHappyRecommendations() {
     }
     
     document.getElementById('csv-recommendations-results').innerHTML = 
-      `<div class="error-message">Error generating happy recommendations: ${errorMessage}</div>`;
+      `<div class="error-message">Error generating uplifting happy recommendations: ${errorMessage}</div>`;
   }
 }
 
