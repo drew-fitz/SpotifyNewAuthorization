@@ -1,8 +1,8 @@
 /**
- * Spotify Genie - Debugging Version
+ * Spotify Genie
  */
 
-// Keep existing authentication code
+// Authentication code
 const clientId = 'fb6eea506c354ff292e0898ffa737638';
 const redirectUrl = 'https://spotifygenie-96268.web.app/';
 const authorizationEndpoint = "https://accounts.spotify.com/authorize";
@@ -1922,12 +1922,12 @@ async function generateHappyRecommendations() {
   }
 }
 
-// Function to generate sad recommendations and format songs nicely using the Spotify API
+// Function to generate intensely sad recommendations using multiple audio attributes
 async function generateSadRecommendations() {
   try {
     // Show loading indicator
     document.getElementById('csv-recommendations-results').innerHTML = 
-      '<p class="loading">Generating sad song recommendations...</p>';
+      '<p class="loading">Generating deeply sad song recommendations...</p>';
     
     // Check if engine exists
     if (!window.recommendationEngine) {
@@ -1970,7 +1970,11 @@ async function generateSadRecommendations() {
     console.log("Sample song from dataset:", sampleSong);
     
     // Make sure required features exist in the dataset
-    const requiredFeatures = ['popularity', 'danceability', 'energy', 'acousticness', 'valence', 'tempo'];
+    const requiredFeatures = [
+      'popularity', 'danceability', 'energy', 'acousticness', 
+      'valence', 'tempo', 'liveness', 'instrumentalness'
+    ];
+    
     const missingFeatures = requiredFeatures.filter(feature => 
       !sampleSong.hasOwnProperty(feature) && !sampleSong.hasOwnProperty(`${feature}_standardized`)
     );
@@ -1991,75 +1995,123 @@ async function generateSadRecommendations() {
     console.log("Preprocessing data...");
     window.recommendationEngine.preprocessData();
     
-    // Generate 100 recommendations
-    console.log("Calling recommendSongs method to get 100 recommendations...");
-    const allRecommendations = window.recommendationEngine.recommendSongs(100);
+    // Generate 200 recommendations (larger pool to filter from)
+    console.log("Calling recommendSongs method to get 200 recommendations...");
+    const allRecommendations = window.recommendationEngine.recommendSongs(200);
     console.log(`Generated ${allRecommendations.length} total recommendations`);
     
     if (!allRecommendations || allRecommendations.length === 0) {
       throw new Error("No recommendations were generated. Try using different liked songs.");
     }
     
-    // Filter recommendations to prioritize sad songs (low valence, lower energy)
-    const sadRecommendations = allRecommendations
-      .filter(song => {
-        // Check if song has valence and energy properties
-        const hasValence = song.hasOwnProperty('valence') || song.hasOwnProperty('valence_standardized');
-        const hasEnergy = song.hasOwnProperty('energy') || song.hasOwnProperty('energy_standardized');
-        
-        if (!hasValence || !hasEnergy) {
-          return true; // Include songs without these properties to avoid empty results
-        }
-        
-        // Get the valence and energy values
-        const valence = song.valence || song.valence_standardized || 0;
-        const energy = song.energy || song.energy_standardized || 0;
-        
-        // Consider songs with low valence (sadness) as "sad"
-        return valence < 0.4;
-      })
-      .sort((a, b) => {
-        // Sort by valence (lower is sadder)
-        const aValence = a.valence || a.valence_standardized || 0;
-        const bValence = b.valence || b.valence_standardized || 0;
-        return aValence - bValence;
-      })
-      .slice(0, 50); // Take top 50 sad songs
+    // Calculate a comprehensive "sadness score" using multiple attributes
+    // This weighted formula prioritizes emotional aspects of the music
+    const recommendationsWithSadnessScore = allRecommendations.map(song => {
+      // Get all relevant attributes (or their standardized versions)
+      const valence = song.valence || song.valence_standardized || 0.5;
+      const energy = song.energy || song.energy_standardized || 0.5;
+      const danceability = song.danceability || song.danceability_standardized || 0.5;
+      const tempo = song.tempo || song.tempo_standardized || 120;
+      const acousticness = song.acousticness || song.acousticness_standardized || 0.5;
+      const liveness = song.liveness || song.liveness_standardized || 0.5;
+      const instrumentalness = song.instrumentalness || song.instrumentalness_standardized || 0;
+      
+      // Normalize tempo to a 0-1 scale (assuming typical range of 40-200 BPM)
+      // Lower tempo is often associated with sadder music
+      const normalizedTempo = Math.max(0, Math.min(1, (tempo - 40) / 160));
+      
+      // Calculate sadness score with weighted components
+      // The formula heavily weights valence (emotional positivity) as the primary indicator of sadness
+      const sadnessScore = (
+        (1 - valence) * 0.35 +           // Low valence (heavily weighted - most important for sadness)
+        (1 - energy) * 0.20 +            // Low energy (sad songs tend to be less energetic)
+        (1 - danceability) * 0.15 +      // Low danceability (sad songs are less danceable)
+        (1 - normalizedTempo) * 0.10 +   // Slower tempo
+        acousticness * 0.10 +            // Higher acousticness (often correlates with emotional songs)
+        (1 - liveness) * 0.05 +          // Lower liveness (sad songs tend to be more intimate/studio)
+        instrumentalness * 0.05          // Slight preference for instrumental (can be deeply emotional)
+      );
+      
+      return {
+        ...song,
+        sadnessScore
+      };
+    });
+    
+    // Filter and sort by sadness score (higher is sadder)
+    const sadRecommendations = recommendationsWithSadnessScore
+      .sort((a, b) => b.sadnessScore - a.sadnessScore) // Sort descending by sadness score
+      .slice(0, 100); // Take top 100 saddest songs
     
     console.log(`Filtered down to ${sadRecommendations.length} sad recommendations`);
     
-    // Ensure recommendations have all required properties
-    const cleanedRecommendations = sadRecommendations.map(rec => ({
-      name: rec.name || "Unknown Track",
-      artist: rec.artist || "Unknown Artist",
-      genre: rec.genre || "Unknown Genre",
-      score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
-      // Add sadness score for reference
-      sadnessScore: (1 - (rec.valence || rec.valence_standardized || 0)).toFixed(2),
-      id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
-      albumCover: rec.albumCover || ''
-    }));
+    // Add descriptive sadness categories based on score
+    const sadnessCategories = [
+      { threshold: 0.85, label: "Heartbreaking" },
+      { threshold: 0.75, label: "Melancholic" },
+      { threshold: 0.65, label: "Wistful" },
+      { threshold: 0.55, label: "Somber" },
+      { threshold: 0.45, label: "Reflective" },
+      { threshold: 0, label: "Slightly Sad" }
+    ];
+    
+    // Ensure recommendations have all required properties and add sadness category
+    const cleanedRecommendations = sadRecommendations.map(rec => {
+      // Determine sadness category based on score
+      const category = sadnessCategories.find(cat => rec.sadnessScore >= cat.threshold);
+      
+      return {
+        name: rec.name || "Unknown Track",
+        artist: rec.artist || "Unknown Artist",
+        genre: rec.genre || "Unknown Genre",
+        score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
+        sadnessScore: rec.sadnessScore.toFixed(2),
+        sadnessCategory: category ? category.label : "Slightly Sad",
+        valence: (rec.valence || rec.valence_standardized || 0).toFixed(2),
+        energy: (rec.energy || rec.energy_standardized || 0).toFixed(2),
+        tempo: Math.round(rec.tempo || rec.tempo_standardized || 0),
+        id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
+        albumCover: rec.albumCover || ''
+      };
+    });
     
     // Store playlist type and recommendations
-    currentPlaylistType = "Sad";
+    currentPlaylistType = "Deeply Sad";
     console.log(`Setting current playlist type to: ${currentPlaylistType}`);
+    
+    // Add timestamp to help ensure we get different recommendations each time
+    console.log(`Recommendation generated at: ${new Date().toISOString()}`);
+    
+    // Add a small cache-busting random value to ensure we get variety
+    window.lastSadRecommendationRun = Date.now() + Math.floor(Math.random() * 1000);
     
     // Store all sad recommendations for potential use in playlist creation
     lastCsvRecommendations = cleanedRecommendations;
     console.log(`Stored ${lastCsvRecommendations.length} cleaned sad recommendations`);
     
-    // Randomly select 10 from the filtered recommendations to display
-    const displayCount = Math.min(10, cleanedRecommendations.length);
-    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
-    const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
-
-    console.log(`Randomly selected ${selectedRecommendations.length} recommendations to display`);
+    // Randomly select 10 songs from the top 100 saddest songs
+    const shuffledRecommendations = [...cleanedRecommendations];
+    
+    // Fisher-Yates shuffle algorithm for true randomness
+    for (let i = shuffledRecommendations.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledRecommendations[i], shuffledRecommendations[j]] = 
+        [shuffledRecommendations[j], shuffledRecommendations[i]];
+    }
+    
+    // Take 10 random songs from our shuffled array
+    const selectedRecommendations = shuffledRecommendations.slice(0, 10);
+    console.log(`Selected ${selectedRecommendations.length} random recommendations from top 100 saddest songs`);
 
     // Display the recommendations with the correct playlist type
     renderRecommendationsTemplate("csv-recommendations-results", {
       recommendations: selectedRecommendations,
       playlistType: currentPlaylistType
     });
+    
+    // Update the template rendering function to include sadness details
+    // Note: You'll need to modify your renderRecommendationsTemplate function to use these new fields
+    
   } catch (error) {
     console.error("Error generating sad recommendations:", error);
     
@@ -2070,15 +2122,16 @@ async function generateSadRecommendations() {
     }
     
     document.getElementById('csv-recommendations-results').innerHTML = 
-      `<div class="error-message">Error generating sad recommendations: ${errorMessage}</div>`;
+      `<div class="error-message">Error generating deeply sad recommendations: ${errorMessage}</div>`;
   }
 }
 
+// Function to generate ultra-chill recommendations using sophisticated audio features
 async function generateChillRecommendations() {
   try {
     // Show loading indicator
     document.getElementById('csv-recommendations-results').innerHTML = 
-      '<p class="loading">Generating chill song recommendations...</p>';
+      '<p class="loading">Generating ultra-chill song recommendations...</p>';
     
     // Check if engine exists
     if (!window.recommendationEngine) {
@@ -2111,7 +2164,7 @@ async function generateChillRecommendations() {
       }
     }
     
-    console.log("Starting chill song recommendation generation with:", {
+    console.log("Starting ultra-chill song recommendation generation with:", {
       datasetSize: window.recommendationEngine.dataset.length,
       likedSongsSize: window.recommendationEngine.likedSongs.length
     });
@@ -2121,7 +2174,11 @@ async function generateChillRecommendations() {
     console.log("Sample song from dataset:", sampleSong);
     
     // Make sure required features exist in the dataset
-    const requiredFeatures = ['popularity', 'danceability', 'energy', 'acousticness', 'valence', 'tempo'];
+    const requiredFeatures = [
+      'popularity', 'danceability', 'energy', 'acousticness', 
+      'valence', 'tempo', 'liveness', 'instrumentalness', 'speechiness', 'loudness'
+    ];
+    
     const missingFeatures = requiredFeatures.filter(feature => 
       !sampleSong.hasOwnProperty(feature) && !sampleSong.hasOwnProperty(`${feature}_standardized`)
     );
@@ -2142,81 +2199,128 @@ async function generateChillRecommendations() {
     console.log("Preprocessing data...");
     window.recommendationEngine.preprocessData();
     
-    // Generate 100 recommendations
-    console.log("Calling recommendSongs method to get 100 recommendations...");
-    const allRecommendations = window.recommendationEngine.recommendSongs(100);
+    // Generate 200 recommendations
+    console.log("Calling recommendSongs method to get 200 recommendations...");
+    const allRecommendations = window.recommendationEngine.recommendSongs(200);
     console.log(`Generated ${allRecommendations.length} total recommendations`);
     
     if (!allRecommendations || allRecommendations.length === 0) {
       throw new Error("No recommendations were generated. Try using different liked songs.");
     }
     
-    // Filter recommendations to prioritize chill songs (medium-high acousticness, low-medium energy, medium tempo)
-    const chillRecommendations = allRecommendations
-      .filter(song => {
-        // Check if song has the properties we need
-        const hasEnergy = song.hasOwnProperty('energy') || song.hasOwnProperty('energy_standardized');
-        const hasAcousticness = song.hasOwnProperty('acousticness') || song.hasOwnProperty('acousticness_standardized');
-        const hasTempo = song.hasOwnProperty('tempo') || song.hasOwnProperty('tempo_standardized');
-        
-        if (!hasEnergy || !hasAcousticness || !hasTempo) {
-          return true; // Include songs without these properties to avoid empty results
-        }
-        
-        // Get the values
-        const energy = song.energy || song.energy_standardized || 0;
-        const acousticness = song.acousticness || song.acousticness_standardized || 0;
-        const tempo = song.tempo || song.tempo_standardized || 0;
-        
-        // Consider songs with low energy and moderate-high acousticness as "chill"
-        // Also prefer songs with moderate tempo (not too fast)
-        const normalizedTempo = tempo / 200; // Normalize tempo to 0-1 range (assuming max tempo ~200)
-        return energy < 0.6 && acousticness > 0.4 && normalizedTempo < 0.7;
-      })
-      .sort((a, b) => {
-        // Sort by combined chill score (low energy, high acousticness, medium tempo)
-        const aEnergy = a.energy || a.energy_standardized || 0;
-        const bEnergy = b.energy || b.energy_standardized || 0;
-        
-        const aAcousticness = a.acousticness || a.acousticness_standardized || 0;
-        const bAcousticness = b.acousticness || b.acousticness_standardized || 0;
-        
-        const aChillScore = (1 - aEnergy) * 0.5 + aAcousticness * 0.5;
-        const bChillScore = (1 - bEnergy) * 0.5 + bAcousticness * 0.5;
-        
-        return bChillScore - aChillScore;
-      })
-      .slice(0, 50); // Take top 50 chill songs
+    // Calculate a comprehensive "chill score" using multiple attributes
+    const recommendationsWithChillScore = allRecommendations.map(song => {
+      // Get all relevant attributes (or their standardized versions)
+      const energy = song.energy || song.energy_standardized || 0.5;
+      const acousticness = song.acousticness || song.acousticness_standardized || 0.5;
+      const tempo = song.tempo || song.tempo_standardized || 120;
+      const danceability = song.danceability || song.danceability_standardized || 0.5;
+      const instrumentalness = song.instrumentalness || song.instrumentalness_standardized || 0;
+      const valence = song.valence || song.valence_standardized || 0.5;
+      const liveness = song.liveness || song.liveness_standardized || 0.5;
+      const speechiness = song.speechiness || song.speechiness_standardized || 0.5;
+      const loudness = song.loudness || song.loudness_standardized || -10;
+      
+      // Normalize tempo to a 0-1 scale (assuming typical range of 40-200 BPM)
+      // For chill music, we want moderate to slow tempo
+      const normalizedTempo = Math.max(0, Math.min(1, (tempo - 40) / 160));
+      
+      // Normalize loudness (typically ranges from -60 to 0 dB)
+      // For chill music, we want quieter tracks
+      const normalizedLoudness = Math.max(0, Math.min(1, (loudness + 60) / 60));
+      
+      // Calculate chill score with weighted components
+      // Note: This is distinctly different from "sadness" - we want relaxed but not necessarily sad
+      const chillScore = (
+        (1 - energy) * 0.25 +               // Low energy is chiller
+        acousticness * 0.20 +               // Higher acousticness for natural, organic sounds
+        (1 - normalizedTempo) * 0.15 +      // Slower tempo is chiller
+        (1 - normalizedLoudness) * 0.15 +   // Quieter songs are chiller
+        instrumentalness * 0.10 +           // Instrumental music can be very chill
+        (1 - liveness) * 0.05 +             // Studio recordings tend to be more carefully produced
+        (1 - speechiness) * 0.05 +          // Less talking/rapping
+        // Medium valence - not too sad, not too happy - perfect for chill
+        (1 - Math.abs(valence - 0.5)) * 0.05
+      );
+      
+      return {
+        ...song,
+        chillScore
+      };
+    });
     
-    console.log(`Filtered down to ${chillRecommendations.length} chill recommendations`);
+    // Filter and sort by chill score (higher is chiller)
+    const chillRecommendations = recommendationsWithChillScore
+      .sort((a, b) => b.chillScore - a.chillScore) // Sort descending by chill score
+      .slice(0, 100); // Take top 100 chillest songs
     
-    // Ensure recommendations have all required properties
-    const cleanedRecommendations = chillRecommendations.map(rec => ({
-      name: rec.name || "Unknown Track",
-      artist: rec.artist || "Unknown Artist",
-      genre: rec.genre || "Unknown Genre",
-      score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
-      // Add chill score for reference
-      chillScore: ((1 - (rec.energy || rec.energy_standardized || 0)) * 0.5 + 
-                  (rec.acousticness || rec.acousticness_standardized || 0) * 0.5).toFixed(2),
-      id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
-      albumCover: rec.albumCover || ''
-    }));
+    console.log(`Filtered down to ${chillRecommendations.length} ultra-chill recommendations`);
+    
+    // Add descriptive chill categories based on score
+    const chillCategories = [
+      { threshold: 0.85, label: "Zen-Master" },
+      { threshold: 0.75, label: "Ultra-Relaxed" },
+      { threshold: 0.65, label: "Super-Chill" },
+      { threshold: 0.55, label: "Laid-Back" },
+      { threshold: 0.45, label: "Mellow" },
+      { threshold: 0, label: "Easy-Going" }
+    ];
+    
+    // Ensure recommendations have all required properties and add chill category
+    const cleanedRecommendations = chillRecommendations.map(rec => {
+      // Determine chill category based on score
+      const category = chillCategories.find(cat => rec.chillScore >= cat.threshold);
+      
+      // Get underlying attributes for additional context
+      const energy = rec.energy || rec.energy_standardized || 0;
+      const acousticness = rec.acousticness || rec.acousticness_standardized || 0;
+      const tempo = rec.tempo || rec.tempo_standardized || 0;
+      const instrumentalness = rec.instrumentalness || rec.instrumentalness_standardized || 0;
+      
+      return {
+        name: rec.name || "Unknown Track",
+        artist: rec.artist || "Unknown Artist",
+        genre: rec.genre || "Unknown Genre",
+        score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
+        chillScore: rec.chillScore.toFixed(2),
+        chillCategory: category ? category.label : "Easy-Going",
+        // Add important attributes that contribute to chillness
+        energy: energy.toFixed(2),
+        acousticness: acousticness.toFixed(2),
+        tempo: Math.round(tempo),
+        instrumentalness: instrumentalness.toFixed(2),
+        id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
+        albumCover: rec.albumCover || ''
+      };
+    });
     
     // Store playlist type and recommendations
-    currentPlaylistType = "Chill";
+    currentPlaylistType = "Ultra-Chill";
     console.log(`Setting current playlist type to: ${currentPlaylistType}`);
+    
+    // Add timestamp to help ensure we get different recommendations each time
+    console.log(`Recommendation generated at: ${new Date().toISOString()}`);
+    
+    // Add a small cache-busting random value to ensure we get variety
+    window.lastChillRecommendationRun = Date.now() + Math.floor(Math.random() * 1000);
     
     // Store all chill recommendations for potential use in playlist creation
     lastCsvRecommendations = cleanedRecommendations;
-    console.log(`Stored ${lastCsvRecommendations.length} cleaned chill recommendations`);
+    console.log(`Stored ${lastCsvRecommendations.length} cleaned ultra-chill recommendations`);
     
-    // Randomly select 10 from the filtered recommendations to display
-    const displayCount = Math.min(10, cleanedRecommendations.length);
-    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
-    const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
-
-    console.log(`Randomly selected ${selectedRecommendations.length} recommendations to display`);
+    // Randomly select 10 from the top chill recommendations using Fisher-Yates shuffle
+    const shuffledRecommendations = [...cleanedRecommendations];
+    
+    // Fisher-Yates shuffle algorithm for true randomness
+    for (let i = shuffledRecommendations.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledRecommendations[i], shuffledRecommendations[j]] = 
+        [shuffledRecommendations[j], shuffledRecommendations[i]];
+    }
+    
+    // Take 10 random songs from our shuffled array
+    const selectedRecommendations = shuffledRecommendations.slice(0, 10);
+    console.log(`Randomly selected ${selectedRecommendations.length} recommendations from top 100 chillest songs`);
 
     // Display the recommendations with the correct playlist type
     renderRecommendationsTemplate("csv-recommendations-results", {
@@ -2224,7 +2328,7 @@ async function generateChillRecommendations() {
       playlistType: currentPlaylistType
     });
   } catch (error) {
-    console.error("Error generating chill recommendations:", error);
+    console.error("Error generating ultra-chill recommendations:", error);
     
     // Provide more helpful error message to guide users
     let errorMessage = error.message;
@@ -2233,16 +2337,16 @@ async function generateChillRecommendations() {
     }
     
     document.getElementById('csv-recommendations-results').innerHTML = 
-      `<div class="error-message">Error generating chill recommendations: ${errorMessage}</div>`;
+      `<div class="error-message">Error generating ultra-chill recommendations: ${errorMessage}</div>`;
   }
 }
 
-// Updated Energetic Recommendations Function
+// Function to generate hyper-energetic recommendations using sophisticated audio features
 async function generateEnergeticRecommendations() {
   try {
     // Show loading indicator
     document.getElementById('csv-recommendations-results').innerHTML = 
-      '<p class="loading">Generating energetic song recommendations...</p>';
+      '<p class="loading">Generating hyper-energetic song recommendations...</p>';
     
     // Check if engine exists
     if (!window.recommendationEngine) {
@@ -2275,7 +2379,7 @@ async function generateEnergeticRecommendations() {
       }
     }
     
-    console.log("Starting energetic song recommendation generation with:", {
+    console.log("Starting hyper-energetic song recommendation generation with:", {
       datasetSize: window.recommendationEngine.dataset.length,
       likedSongsSize: window.recommendationEngine.likedSongs.length
     });
@@ -2285,7 +2389,11 @@ async function generateEnergeticRecommendations() {
     console.log("Sample song from dataset:", sampleSong);
     
     // Make sure required features exist in the dataset
-    const requiredFeatures = ['popularity', 'danceability', 'energy', 'acousticness', 'valence', 'tempo'];
+    const requiredFeatures = [
+      'popularity', 'danceability', 'energy', 'acousticness', 
+      'valence', 'tempo', 'liveness', 'loudness', 'key'
+    ];
+    
     const missingFeatures = requiredFeatures.filter(feature => 
       !sampleSong.hasOwnProperty(feature) && !sampleSong.hasOwnProperty(`${feature}_standardized`)
     );
@@ -2306,88 +2414,124 @@ async function generateEnergeticRecommendations() {
     console.log("Preprocessing data...");
     window.recommendationEngine.preprocessData();
     
-    // Generate 100 recommendations
-    console.log("Calling recommendSongs method to get 100 recommendations...");
-    const allRecommendations = window.recommendationEngine.recommendSongs(100);
+    // Generate 200 recommendations
+    console.log("Calling recommendSongs method to get 200 recommendations...");
+    const allRecommendations = window.recommendationEngine.recommendSongs(200);
     console.log(`Generated ${allRecommendations.length} total recommendations`);
     
     if (!allRecommendations || allRecommendations.length === 0) {
       throw new Error("No recommendations were generated. Try using different liked songs.");
     }
     
-    // Filter recommendations to prioritize energetic songs (high energy, high tempo, high danceability)
-    const energeticRecommendations = allRecommendations
-      .filter(song => {
-        // Check if song has the properties we need
-        const hasEnergy = song.hasOwnProperty('energy') || song.hasOwnProperty('energy_standardized');
-        const hasTempo = song.hasOwnProperty('tempo') || song.hasOwnProperty('tempo_standardized');
-        const hasDanceability = song.hasOwnProperty('danceability') || song.hasOwnProperty('danceability_standardized');
-        
-        if (!hasEnergy || !hasTempo || !hasDanceability) {
-          return true; // Include songs without these properties to avoid empty results
-        }
-        
-        // Get the values
-        const energy = song.energy || song.energy_standardized || 0;
-        const tempo = song.tempo || song.tempo_standardized || 0;
-        const danceability = song.danceability || song.danceability_standardized || 0;
-        
-        // Consider songs with high energy as "energetic"
-        // Also prefer songs with higher tempo and good danceability
-        return energy > 0.7;
-      })
-      .sort((a, b) => {
-        // Sort by combined energy score
-        const aEnergy = a.energy || a.energy_standardized || 0;
-        const bEnergy = b.energy || b.energy_standardized || 0;
-        
-        const aTempo = a.tempo || a.tempo_standardized || 0;
-        const bTempo = b.tempo || b.tempo_standardized || 0;
-        
-        const aDanceability = a.danceability || a.danceability_standardized || 0;
-        const bDanceability = b.danceability || b.danceability_standardized || 0;
-        
-        // Normalize tempo to 0-1 range (assuming max tempo ~200)
-        const aNormalizedTempo = Math.min(aTempo / 200, 1);
-        const bNormalizedTempo = Math.min(bTempo / 200, 1);
-        
-        const aEnergeticScore = aEnergy * 0.6 + aNormalizedTempo * 0.2 + aDanceability * 0.2;
-        const bEnergeticScore = bEnergy * 0.6 + bNormalizedTempo * 0.2 + bDanceability * 0.2;
-        
-        return bEnergeticScore - aEnergeticScore;
-      })
-      .slice(0, 50); // Take top 50 energetic songs
+    // Calculate a comprehensive "energy score" using multiple attributes
+    const recommendationsWithEnergyScore = allRecommendations.map(song => {
+      // Get all relevant attributes (or their standardized versions)
+      const energy = song.energy || song.energy_standardized || 0.5;
+      const tempo = song.tempo || song.tempo_standardized || 120;
+      const danceability = song.danceability || song.danceability_standardized || 0.5;
+      const valence = song.valence || song.valence_standardized || 0.5;
+      const liveness = song.liveness || song.liveness_standardized || 0.5;
+      const loudness = song.loudness || song.loudness_standardized || -10;
+      const acousticness = song.acousticness || song.acousticness_standardized || 0.5;
+      
+      // Normalize tempo to a 0-1 scale (assuming max tempo ~200 BPM)
+      // For energetic music, faster is better
+      const normalizedTempo = Math.min(tempo / 180, 1);
+      
+      // Normalize loudness (typically ranges from -60 to 0 dB)
+      // For energetic music, louder is better
+      const normalizedLoudness = Math.max(0, Math.min(1, (loudness + 30) / 30));
+      
+      // Calculate energy score with weighted components
+      // Note: This is focused on pure energy, not happiness (so valence isn't weighted as much)
+      const energyScore = (
+        energy * 0.30 +                  // High energy is critical
+        normalizedTempo * 0.20 +         // Faster tempo for more drive
+        normalizedLoudness * 0.15 +      // Louder songs feel more energetic
+        danceability * 0.15 +            // Danceable tracks get people moving
+        liveness * 0.10 +                // Live recordings often have more energy
+        (1 - acousticness) * 0.05 +      // Electronic/produced tracks typically more energetic 
+        valence * 0.05                   // Slightly favor positive valence but not a huge factor
+      );
+      
+      return {
+        ...song,
+        energyScore
+      };
+    });
     
-    console.log(`Filtered down to ${energeticRecommendations.length} energetic recommendations`);
+    // Filter and sort by energy score (higher is more energetic)
+    const energeticRecommendations = recommendationsWithEnergyScore
+      .sort((a, b) => b.energyScore - a.energyScore) // Sort descending by energy score
+      .slice(0, 100); // Take top 100 most energetic songs
     
-    // Ensure recommendations have all required properties
-    const cleanedRecommendations = energeticRecommendations.map(rec => ({
-      name: rec.name || "Unknown Track",
-      artist: rec.artist || "Unknown Artist",
-      genre: rec.genre || "Unknown Genre",
-      score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
-      // Add energetic score for reference
-      energeticScore: ((rec.energy || rec.energy_standardized || 0) * 0.6 + 
-                      Math.min((rec.tempo || rec.tempo_standardized || 0) / 200, 1) * 0.2 +
-                      (rec.danceability || rec.danceability_standardized || 0) * 0.2).toFixed(2),
-      id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
-      albumCover: rec.albumCover || ''
-    }));
+    console.log(`Filtered down to ${energeticRecommendations.length} hyper-energetic recommendations`);
+    
+    // Add descriptive energy categories based on score
+    const energyCategories = [
+      { threshold: 0.90, label: "Explosive" },
+      { threshold: 0.85, label: "Electrifying" },
+      { threshold: 0.80, label: "Supercharged" },
+      { threshold: 0.75, label: "High-Octane" },
+      { threshold: 0.70, label: "High-Voltage" },
+      { threshold: 0, label: "Energetic" }
+    ];
+    
+    // Ensure recommendations have all required properties and add energy category
+    const cleanedRecommendations = energeticRecommendations.map(rec => {
+      // Determine energy category based on score
+      const category = energyCategories.find(cat => rec.energyScore >= cat.threshold);
+      
+      // Get underlying attributes for additional context
+      const energy = rec.energy || rec.energy_standardized || 0;
+      const tempo = rec.tempo || rec.tempo_standardized || 0;
+      const danceability = rec.danceability || rec.danceability_standardized || 0;
+      const loudness = rec.loudness || rec.loudness_standardized || 0;
+      
+      return {
+        name: rec.name || "Unknown Track",
+        artist: rec.artist || "Unknown Artist",
+        genre: rec.genre || "Unknown Genre",
+        score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
+        energyScore: rec.energyScore.toFixed(2),
+        energyCategory: category ? category.label : "Energetic",
+        // Add important attributes that contribute to energy
+        energy: energy.toFixed(2),
+        tempo: Math.round(tempo),
+        danceability: danceability.toFixed(2),
+        loudness: loudness.toFixed(1),
+        id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
+        albumCover: rec.albumCover || ''
+      };
+    });
     
     // Store playlist type and recommendations
-    currentPlaylistType = "Energetic";
+    currentPlaylistType = "Hyper-Energetic";
     console.log(`Setting current playlist type to: ${currentPlaylistType}`);
+    
+    // Add timestamp to help ensure we get different recommendations each time
+    console.log(`Recommendation generated at: ${new Date().toISOString()}`);
+    
+    // Add a small cache-busting random value to ensure we get variety
+    window.lastEnergeticRecommendationRun = Date.now() + Math.floor(Math.random() * 1000);
     
     // Store all energetic recommendations for potential use in playlist creation
     lastCsvRecommendations = cleanedRecommendations;
-    console.log(`Stored ${lastCsvRecommendations.length} cleaned energetic recommendations`);
+    console.log(`Stored ${lastCsvRecommendations.length} cleaned hyper-energetic recommendations`);
     
-    // Randomly select 10 from the filtered recommendations to display
-    const displayCount = Math.min(10, cleanedRecommendations.length);
-    const shuffledRecommendations = [...cleanedRecommendations].sort(() => Math.random() - 0.5);
-    const selectedRecommendations = shuffledRecommendations.slice(0, displayCount);
-
-    console.log(`Randomly selected ${selectedRecommendations.length} recommendations to display`);
+    // Randomly select 10 from the top energetic recommendations using Fisher-Yates shuffle
+    const shuffledRecommendations = [...cleanedRecommendations];
+    
+    // Fisher-Yates shuffle algorithm for true randomness
+    for (let i = shuffledRecommendations.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledRecommendations[i], shuffledRecommendations[j]] = 
+        [shuffledRecommendations[j], shuffledRecommendations[i]];
+    }
+    
+    // Take 10 random songs from our shuffled array
+    const selectedRecommendations = shuffledRecommendations.slice(0, 10);
+    console.log(`Randomly selected ${selectedRecommendations.length} recommendations from top 100 most energetic songs`);
 
     // Display the recommendations with the correct playlist type
     renderRecommendationsTemplate("csv-recommendations-results", {
@@ -2395,7 +2539,7 @@ async function generateEnergeticRecommendations() {
       playlistType: currentPlaylistType
     });
   } catch (error) {
-    console.error("Error generating energetic recommendations:", error);
+    console.error("Error generating hyper-energetic recommendations:", error);
     
     // Provide more helpful error message to guide users
     let errorMessage = error.message;
@@ -2404,10 +2548,9 @@ async function generateEnergeticRecommendations() {
     }
     
     document.getElementById('csv-recommendations-results').innerHTML = 
-      `<div class="error-message">Error generating energetic recommendations: ${errorMessage}</div>`;
+      `<div class="error-message">Error generating hyper-energetic recommendations: ${errorMessage}</div>`;
   }
 }
-
 
 // Template rendering function for song recommendations
 function renderRecommendationsTemplate(targetId, { recommendations, playlistType }) {
