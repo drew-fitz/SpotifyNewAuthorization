@@ -227,7 +227,7 @@ async loadDataset(fileOrData) {
     }
   
     // Recommend songs based on liked songs
-    recommendSongs(topN = 10) {
+    recommendSongs(topN = 20) {
       if (!this.dataset || !this.likedSongs) {
         throw new Error("Dataset or liked songs not loaded");
       }
