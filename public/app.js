@@ -1632,7 +1632,7 @@ async function useSpotifyLikedSongs() {
     recommendationEngine.likedSongs = formattedTracks;
     
     document.getElementById('liked-songs-status').textContent = 
-      `Spotify liked songs loaded: ${recommendationEngine.likedSongs.length} songs`;
+      `Spotify liked songs loaded: 20 songs`;
     
     // Enable recommendations button if both datasets are loaded
     if (recommendationEngine.dataset) {
