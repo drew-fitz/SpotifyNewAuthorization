@@ -656,75 +656,6 @@ function addStyles() {
   console.log("Added custom styles for track display");
 }
 
-// New function to render search results
-function renderSearchResultsTemplate(targetId, { searchResults }) {
-  console.log(`Rendering ${searchResults.length} search results to ${targetId}`);
-  const targetElement = document.getElementById(targetId);
-  
-  if (!targetElement) {
-    console.error(`Target element not found: ${targetId}`);
-    return;
-  }
-  
-  // Create container
-  const container = document.createElement('div');
-  container.className = 'search-results-container';
-  
-  // Add heading
-  const heading = document.createElement('h3');
-  heading.textContent = 'Search Results';
-  container.appendChild(heading);
-  
-  if (!searchResults || searchResults.length === 0) {
-    const noResultsMsg = document.createElement('p');
-    noResultsMsg.textContent = "No matching tracks found.";
-    container.appendChild(noResultsMsg);
-  } else {
-    // Create results list
-    const resultsList = document.createElement('div');
-    resultsList.className = 'track-list';
-    
-    searchResults.forEach(track => {
-      const trackItem = document.createElement('div');
-      trackItem.className = 'track-item';
-      
-            // Create track info container first (this will be on the left)
-      const trackInfo = document.createElement('div');
-      trackInfo.className = 'track-info';
-      
-      // Add track name
-      const trackName = document.createElement('div');
-      trackName.className = 'track-name';
-      trackName.textContent = track.name;
-      trackInfo.appendChild(trackName);
-      
-      // Add artist name
-      const artistName = document.createElement('div');
-      artistName.className = 'track-artist';
-      artistName.textContent = track.artist;
-      trackInfo.appendChild(artistName);
-      
-      // Add the track info to the track item (on the left)
-      trackItem.appendChild(trackInfo);
-      
-      // Create album cover if available (this will be on the right)
-      if (track.albumCover) {
-        const albumImg = document.createElement('img');
-        albumImg.src = track.albumCover;
-        albumImg.alt = `${track.name} album art`;
-        albumImg.className = 'album-cover';
-        trackItem.appendChild(albumImg);
-      }
-      resultsList.appendChild(trackItem);
-    });
-    
-    container.appendChild(resultsList);
-  }
-  
-  // Clear and append to target
-  targetElement.innerHTML = '';
-  targetElement.appendChild(container);
-}
 
 // Get saved tracks with audio features
 async function getSavedTracksWithFeatures() {
@@ -2932,6 +2863,285 @@ function updateCSSForPreloadedDataset() {
 // Global variable to store last generated CSV recommendations
 let lastCsvRecommendations = null;
 
+async function createPlaylistFromTrack(trackId, trackName, artistName) {
+  try {
+    console.log(`Creating playlist based on: ${trackName} by ${artistName} (ID: ${trackId})`);
+    
+    // Show loading indicator
+    document.getElementById('search-results').innerHTML = 
+      '<div class="loading-message">Creating playlist based on this song...</div>';
+    
+    // Initialize recommendation engine if not already done
+    if (!window.recommendationEngine) {
+      console.log("Creating recommendation engine instance");
+      window.recommendationEngine = new window.RecommendationEngine();
+      
+      // Load the dataset if not already loaded
+      if (!window.recommendationEngine.dataset) {
+        console.log("Loading default dataset");
+        await loadDefaultDataset();
+      }
+    }
+    
+    // Make sure dataset is loaded
+    if (!window.recommendationEngine.dataset || window.recommendationEngine.dataset.length === 0) {
+      throw new Error("Dataset not loaded. Please refresh and try again.");
+    }
+    
+    console.log(`Looking for song "${trackName}" by "${artistName}" in the dataset...`);
+    
+    // Search for the exact song in the dataset
+    const foundTrack = findTrackInDataset(trackName, artistName);
+    let seedTrack;
+    
+    if (foundTrack) {
+      // If exact song found, use it as the seed
+      console.log("Found exact song match in dataset:", foundTrack);
+      seedTrack = {
+        Name: trackName,
+        Artist: artistName
+      };
+    } else {
+      // If exact song not found, try to find a song by the same artist
+      console.log("Exact song not found, looking for songs by the same artist...");
+      const artistTrack = findArtistTrackInDataset(artistName);
+      
+      if (artistTrack) {
+        // If artist song found, use it but keep the requested song name
+        console.log("Found a song by the same artist:", artistTrack);
+        seedTrack = {
+          Name: trackName, // Keep the requested name for display purposes
+          Artist: artistName
+        };
+      } else {
+        // If no artist songs found, use default values
+        console.log("No songs by this artist found, using a default popular song as seed");
+        // Find a popular song from the dataset to use as seed
+        const popularTrack = findPopularTrackInDataset();
+        
+        seedTrack = {
+          Name: trackName, // Keep the requested name for display purposes
+          Artist: artistName
+        };
+        
+        console.log("Using popular track as reference:", popularTrack);
+      }
+    }
+    
+    // Set this single track as the "liked songs" for the recommendation engine
+    window.recommendationEngine.likedSongs = [seedTrack];
+    console.log("Set seed track as liked song:", seedTrack);
+    
+    // Force preprocessing to ensure all features are ready
+    window.recommendationEngine.preprocessData();
+    
+    // Generate recommendations based on this single track
+    console.log("Generating recommendations based on seed track...");
+    const recommendations = window.recommendationEngine.recommendSongs(30);
+    console.log(`Generated ${recommendations.length} recommendations`);
+    
+    if (!recommendations || recommendations.length === 0) {
+      throw new Error("Could not generate recommendations based on this song");
+    }
+    
+    // Clean and format the recommendations
+    const cleanedRecommendations = recommendations.map(rec => ({
+      name: rec.name || "Unknown Track",
+      artist: rec.artist || "Unknown Artist",
+      genre: rec.genre || "Unknown Genre",
+      score: typeof rec.score === 'number' ? rec.score.toFixed(2) : rec.score || "N/A",
+      id: rec.id || `local-${(rec.name || 'track').replace(/\s+/g, '-').toLowerCase()}`,
+      albumCover: rec.albumCover || ''
+    }));
+    
+    // Store the recommendations and set playlist type
+    lastCsvRecommendations = cleanedRecommendations;
+    currentPlaylistType = `Based on "${trackName}"`;
+    
+    // Display the recommendations
+    renderRecommendationsTemplate("search-results", {
+      recommendations: cleanedRecommendations.slice(0, 15),
+      playlistType: currentPlaylistType
+    });
+    
+    // Scroll to the results
+    document.getElementById('search-results').scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+    
+  } catch (error) {
+    console.error("Error creating playlist from track:", error);
+    document.getElementById('search-results').innerHTML = 
+      `<div class="error-message">Error creating playlist: ${error.message}</div>`;
+  }
+}
+
+// Helper function to find a track in the dataset
+function findTrackInDataset(trackName, artistName) {
+  if (!window.recommendationEngine || !window.recommendationEngine.dataset) {
+    return null;
+  }
+  
+  const normalizedTrackName = normalizeString(trackName);
+  const normalizedArtistName = normalizeString(artistName);
+  
+  // Search for the track in the dataset
+  return window.recommendationEngine.dataset.find(song => {
+    const songTrackName = normalizeString(song.track_name || '');
+    const songArtistName = normalizeString(song.artists || '');
+    
+    return songTrackName === normalizedTrackName && 
+           songArtistName.includes(normalizedArtistName);
+  });
+}
+
+// Helper function to find any track by the same artist
+function findArtistTrackInDataset(artistName) {
+  if (!window.recommendationEngine || !window.recommendationEngine.dataset) {
+    return null;
+  }
+  
+  const normalizedArtistName = normalizeString(artistName);
+  
+  // Search for any track by the artist in the dataset
+  return window.recommendationEngine.dataset.find(song => {
+    const songArtistName = normalizeString(song.artists || '');
+    return songArtistName.includes(normalizedArtistName);
+  });
+}
+
+// Helper function to find a popular track in the dataset to use as fallback
+function findPopularTrackInDataset() {
+  if (!window.recommendationEngine || !window.recommendationEngine.dataset) {
+    return null;
+  }
+  
+  // Sort by popularity and get the top track
+  const sortedTracks = [...window.recommendationEngine.dataset]
+    .filter(song => song.popularity && song.track_name && song.artists)
+    .sort((a, b) => b.popularity - a.popularity);
+  
+  return sortedTracks.length > 0 ? sortedTracks[0] : null;
+}
+
+// Helper function to normalize strings for comparison
+function normalizeString(str) {
+  if (typeof str !== 'string') return '';
+  return str.toLowerCase().trim();
+}
+
+// Update renderSearchResultsTemplate function to add the "Create Playlist" button
+function renderSearchResultsTemplate(targetId, { searchResults }) {
+  console.log(`Rendering ${searchResults.length} search results to ${targetId}`);
+  const targetElement = document.getElementById(targetId);
+  
+  if (!targetElement) {
+    console.error(`Target element not found: ${targetId}`);
+    return;
+  }
+  
+  // Create container
+  const container = document.createElement('div');
+  container.className = 'search-results-container';
+  
+  // Add heading
+  const heading = document.createElement('h3');
+  heading.textContent = 'Search Results';
+  container.appendChild(heading);
+  
+  if (!searchResults || searchResults.length === 0) {
+    const noResultsMsg = document.createElement('p');
+    noResultsMsg.textContent = "No matching tracks found.";
+    container.appendChild(noResultsMsg);
+  } else {
+    // Create results list
+    const resultsList = document.createElement('div');
+    resultsList.className = 'track-list';
+    
+    searchResults.forEach(track => {
+      const trackItem = document.createElement('div');
+      trackItem.className = 'track-item';
+      
+      // Create track info container
+      const trackInfo = document.createElement('div');
+      trackInfo.className = 'track-info';
+      
+      // Add track name
+      const trackName = document.createElement('div');
+      trackName.className = 'track-name';
+      trackName.textContent = track.name;
+      trackInfo.appendChild(trackName);
+      
+      // Add artist name
+      const artistName = document.createElement('div');
+      artistName.className = 'track-artist';
+      artistName.textContent = track.artist;
+      trackInfo.appendChild(artistName);
+      
+      // Add "Create Playlist" button
+      const createPlaylistBtn = document.createElement('button');
+      createPlaylistBtn.className = 'create-playlist-btn';
+      createPlaylistBtn.textContent = 'Create Similar Playlist';
+      createPlaylistBtn.onclick = function() {
+        createPlaylistFromTrack(track.id, track.name, track.artist);
+      };
+      trackInfo.appendChild(createPlaylistBtn);
+      
+      // Add the track info to the track item
+      trackItem.appendChild(trackInfo);
+      
+      // Create album cover if available
+      if (track.albumCover) {
+        const albumImg = document.createElement('img');
+        albumImg.src = track.albumCover;
+        albumImg.alt = `${track.name} album art`;
+        albumImg.className = 'album-cover';
+        trackItem.appendChild(albumImg);
+      }
+      
+      resultsList.appendChild(trackItem);
+    });
+    
+    container.appendChild(resultsList);
+  }
+  
+  // Clear and append to target
+  targetElement.innerHTML = '';
+  targetElement.appendChild(container);
+}
+
+// Add CSS for the Create Playlist button
+const style = document.createElement('style');
+style.textContent = `
+  .create-playlist-btn {
+    background-color: #1DB954;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 5px 10px;
+    margin-top: 5px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background-color 0.3s ease;
+  }
+  
+  .create-playlist-btn:hover {
+    background-color: #1ed760;
+  }
+  
+  .similar-song-badge {
+    background-color: rgba(29, 185, 84, 0.1);
+    color: #1DB954;
+    border: 1px solid #1DB954;
+    border-radius: 10px;
+    padding: 2px 6px;
+    font-size: 10px;
+    margin-left: 5px;
+  }
+`;
+document.head.appendChild(style);
+
 // Add these functions to the window object for event handlers
 window.handleDatasetUpload = handleDatasetUpload;
 window.generateHappyRecommendations = generateHappyRecommendations;
@@ -2944,5 +3154,6 @@ window.saveCSVRecommendationsToSpotify = saveCSVRecommendationsToSpotify;
 window.loginWithSpotifyClick = loginWithSpotifyClick;
 window.logoutClick = logoutClick;
 window.handleSearch = handleSearch;
+window.createPlaylistFromTrack = createPlaylistFromTrack;
 window.handleGeneratePlaylist = handleGeneratePlaylist;
 window.exportLikedSongsToCSV = exportLikedSongsToCSV;
