@@ -550,11 +550,6 @@ function renderTracksTemplate(targetId, tracks) {
   container.appendChild(heading);
   
   // Always add the export button at the top
-  const exportButton = document.createElement('button');
-  exportButton.textContent = 'Download Liked Songs as CSV';
-  exportButton.onclick = exportLikedSongsToCSV;
-  exportButton.className = 'spotify-button';
-  container.appendChild(exportButton);
   
   if (!tracks || tracks.length === 0) {
     const noTracksMsg = document.createElement('p');
@@ -1772,7 +1767,7 @@ async function generateHappyRecommendations() {
     
     // Generate 200 recommendations
     console.log("Calling recommendSongs method to get 200 recommendations...");
-    const allRecommendations = window.recommendationEngine.recommendSongs(200);
+    const allRecommendations = window.recommendationEngine.recommendSongs(500);
     console.log(`Generated ${allRecommendations.length} total recommendations`);
     
     if (!allRecommendations || allRecommendations.length === 0) {
@@ -2500,7 +2495,7 @@ async function generateEnergeticRecommendations() {
     // Calculate a comprehensive "energy score" using multiple attributes
     const recommendationsWithEnergyScore = allRecommendations.map(song => {
       // Get all relevant attributes (or their standardized versions)
-      const energy = song.energy || song.energy_standardized || 0.5;
+      const energy = song.enerfgy || song.energy_standardized || 0.5;
       const tempo = song.tempo || song.tempo_standardized || 120;
       const danceability = song.danceability || song.danceability_standardized || 0.5;
       const valence = song.valence || song.valence_standardized || 0.5;
