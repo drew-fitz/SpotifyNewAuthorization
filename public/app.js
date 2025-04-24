@@ -2186,9 +2186,6 @@ async function generateSadRecommendations() {
       playlistType: currentPlaylistType
     });
     
-    // Update the template rendering function to include sadness details
-    // Note: You'll need to modify your renderRecommendationsTemplate function to use these new fields
-    
   } catch (error) {
     console.error("Error generating sad recommendations:", error);
     
@@ -2630,7 +2627,7 @@ async function generateEnergeticRecommendations() {
 }
 
 // Update the renderRecommendationsTemplate function to include the callback to our save function
-function renderRecommendationsTemplate(targetId, { recommendations, playlistType }) {
+function renderRecommendationsTemplate(targetId, { recommendations, playlistType, originalRequest }) {
   const targetElement = document.getElementById(targetId);
   if (!targetElement) {
     console.error(`Target element not found: ${targetId}`);
@@ -2659,6 +2656,17 @@ function renderRecommendationsTemplate(targetId, { recommendations, playlistType
     : "Song Recommendations";
   recommendationsContainer.innerHTML = `<h3>${headingText}</h3>`;
 
+  // Add notice if we're showing songs based on a different track than requested
+  if (originalRequest) {
+    const noticeBox = document.createElement("div");
+    noticeBox.className = "recommendation-notice";
+    noticeBox.innerHTML = `
+      <p>We couldn't find "${originalRequest.trackName}" by ${originalRequest.artistName} in our database, 
+      so we're showing recommendations based on other songs by ${originalRequest.artistName} or similar artists.</p>
+    `;
+    recommendationsContainer.appendChild(noticeBox);
+  }
+
   // Create the track list and append each track dynamically
   const trackList = document.createElement("div");
   trackList.className = "track-list";
@@ -2678,19 +2686,25 @@ function renderRecommendationsTemplate(targetId, { recommendations, playlistType
     trackArtist.className = "track-artist";
     trackArtist.textContent = track.artist;
 
-    const trackGenre = document.createElement("div");
-    trackGenre.className = "track-genre";
-    trackGenre.textContent = `Genre: ${track.genre}`;
+    // Only add genre if available
+    if (track.genre && track.genre !== "Unknown Genre") {
+      const trackGenre = document.createElement("div");
+      trackGenre.className = "track-genre";
+      trackGenre.textContent = `Genre: ${track.genre}`;
+      trackInfo.appendChild(trackGenre);
+    }
 
-    const trackScore = document.createElement("div");
-    trackScore.className = "track-score";
-    trackScore.textContent = `Score: ${track.score}`;
+    // Add score if available
+    if (track.score && track.score !== "N/A") {
+      const trackScore = document.createElement("div");
+      trackScore.className = "track-score";
+      trackScore.textContent = `Score: ${track.score}`;
+      trackInfo.appendChild(trackScore);
+    }
 
     // Append track info
     trackInfo.appendChild(trackName);
     trackInfo.appendChild(trackArtist);
-    trackInfo.appendChild(trackGenre);
-    trackInfo.appendChild(trackScore);
 
     trackItem.appendChild(trackInfo);
 
@@ -2738,6 +2752,19 @@ function renderRecommendationsTemplate(targetId, { recommendations, playlistType
   recommendationsContainer.appendChild(playlistActions);
   
   targetElement.appendChild(recommendationsContainer);
+
+  // Add some CSS for the notice
+  const style = document.createElement('style');
+  style.textContent = `
+    .recommendation-notice {
+      background-color: rgba(255, 193, 7, 0.1);
+      border-left: 4px solid #ffc107;
+      padding: 10px 15px;
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+  `;
+  document.head.appendChild(style);
 }
 
 // Fix the save function to save only the displayed 10 songs
@@ -2901,6 +2928,9 @@ async function createPlaylistFromTrack(trackId, trackName, artistName) {
     // Search for the exact song in the dataset
     const foundTrack = findTrackInDataset(trackName, artistName);
     let seedTrack;
+    let playlistSource = trackName; // Default playlist source for UI display
+    let usingOriginalRequest = true;
+    let originalRequest = null;
     
     if (foundTrack) {
       // If exact song found, use it as the seed
@@ -2910,29 +2940,53 @@ async function createPlaylistFromTrack(trackId, trackName, artistName) {
         Artist: artistName
       };
     } else {
-      // If exact song not found, try to find a song by the same artist
-      console.log("Exact song not found, looking for songs by the same artist...");
-      const artistTrack = findArtistTrackInDataset(artistName);
+      // If exact song not found, try to find any songs by the same artist
+      console.log("Exact song not found, looking for ANY songs by the same artist...");
       
-      if (artistTrack) {
-        // If artist song found, use it but keep the requested song name
-        console.log("Found a song by the same artist:", artistTrack);
+      // Find ALL songs by the same artist
+      const artistTracks = findAllArtistTracksInDataset(artistName);
+      
+      if (artistTracks && artistTracks.length > 0) {
+        // If artist songs found, randomly pick one to use as seed
+        const randomIndex = Math.floor(Math.random() * artistTracks.length);
+        const selectedArtistTrack = artistTracks[randomIndex];
+        
+        console.log(`Found ${artistTracks.length} songs by the same artist. Selected:`, selectedArtistTrack);
+        
+        // Use the found artist track, but keep the artist name for display
         seedTrack = {
-          Name: trackName, // Keep the requested name for display purposes
+          Name: selectedArtistTrack.track_name || trackName,
           Artist: artistName
         };
+        
+        // Update the playlist source to indicate we're using another song by the artist
+        playlistSource = `${artistName}'s Music`;
+        usingOriginalRequest = false;
+        originalRequest = { trackName, artistName };
+        
       } else {
-        // If no artist songs found, use default values
-        console.log("No songs by this artist found, using a default popular song as seed");
-        // Find a popular song from the dataset to use as seed
+        // If no artist songs found, use a popular track as fallback
+        console.log("No songs by this artist found, using a popular song as seed");
         const popularTrack = findPopularTrackInDataset();
         
-        seedTrack = {
-          Name: trackName, // Keep the requested name for display purposes
-          Artist: artistName
-        };
-        
-        console.log("Using popular track as reference:", popularTrack);
+        if (popularTrack) {
+          console.log("Using popular track as reference:", popularTrack);
+          seedTrack = {
+            Name: popularTrack.track_name || trackName,
+            Artist: popularTrack.artists || artistName
+          };
+          
+          // Update playlist source to indicate we're showing general recommendations
+          playlistSource = `Similar Music`;
+          usingOriginalRequest = false;
+          originalRequest = { trackName, artistName };
+        } else {
+          // Fallback to original request as a last resort
+          seedTrack = {
+            Name: trackName,
+            Artist: artistName
+          };
+        }
       }
     }
     
@@ -2949,7 +3003,7 @@ async function createPlaylistFromTrack(trackId, trackName, artistName) {
     console.log(`Generated ${recommendations.length} recommendations`);
     
     if (!recommendations || recommendations.length === 0) {
-      throw new Error("Could not generate recommendations based on this song");
+      throw new Error("Could not generate recommendations. Please try a different song.");
     }
     
     // Clean and format the recommendations
@@ -2964,12 +3018,20 @@ async function createPlaylistFromTrack(trackId, trackName, artistName) {
     
     // Store the recommendations and set playlist type
     lastCsvRecommendations = cleanedRecommendations;
-    currentPlaylistType = `Based on "${trackName}"`;
+    
+    // Use the updated playlist source in the display
+    if (foundTrack) {
+      currentPlaylistType = `Based on "${trackName}"`;
+    } else {
+      // If we used a different song as seed, indicate this in the playlist name
+      currentPlaylistType = `Based on ${playlistSource}`;
+    }
     
     // Display the recommendations
     renderRecommendationsTemplate("search-results", {
       recommendations: cleanedRecommendations.slice(0, 15),
-      playlistType: currentPlaylistType
+      playlistType: currentPlaylistType,
+      originalRequest: usingOriginalRequest ? null : originalRequest
     });
     
     // Scroll to the results
@@ -3004,6 +3066,30 @@ function findTrackInDataset(trackName, artistName) {
   });
 }
 
+// Helper function to find ALL tracks by the same artist
+function findAllArtistTracksInDataset(artistName) {
+  if (!window.recommendationEngine || !window.recommendationEngine.dataset) {
+    return [];
+  }
+  
+  const normalizedArtistName = normalizeString(artistName);
+  
+  // Search for ALL tracks by the artist in the dataset
+  const artistTracks = window.recommendationEngine.dataset.filter(song => {
+    // Check if artists field exists and contains the artist name (partial match)
+    if (song.artists) {
+      const songArtistName = normalizeString(song.artists);
+      return songArtistName.includes(normalizedArtistName);
+    }
+    return false;
+  });
+  
+  console.log(`Found ${artistTracks.length} tracks by artist "${artistName}" in dataset`);
+  
+  // Return all found tracks
+  return artistTracks;
+}
+
 // Helper function to find any track by the same artist
 function findArtistTrackInDataset(artistName) {
   if (!window.recommendationEngine || !window.recommendationEngine.dataset) {
@@ -3012,11 +3098,31 @@ function findArtistTrackInDataset(artistName) {
   
   const normalizedArtistName = normalizeString(artistName);
   
-  // Search for any track by the artist in the dataset
-  return window.recommendationEngine.dataset.find(song => {
+  // Try exact artist name first
+  let artistTrack = window.recommendationEngine.dataset.find(song => {
     const songArtistName = normalizeString(song.artists || '');
-    return songArtistName.includes(normalizedArtistName);
+    return songArtistName === normalizedArtistName;
   });
+  
+  // If no exact match, try partial matching (e.g. for artists with multiple names)
+  if (!artistTrack) {
+    artistTrack = window.recommendationEngine.dataset.find(song => {
+      const songArtistName = normalizeString(song.artists || '');
+      return songArtistName.includes(normalizedArtistName) || 
+             normalizedArtistName.includes(songArtistName);
+    });
+  }
+  
+  // If still no match, try checking for the first name of the artist
+  if (!artistTrack && normalizedArtistName.includes(' ')) {
+    const artistFirstName = normalizedArtistName.split(' ')[0];
+    artistTrack = window.recommendationEngine.dataset.find(song => {
+      const songArtistName = normalizeString(song.artists || '');
+      return songArtistName.includes(artistFirstName);
+    });
+  }
+  
+  return artistTrack;
 }
 
 // Helper function to find a popular track in the dataset to use as fallback
