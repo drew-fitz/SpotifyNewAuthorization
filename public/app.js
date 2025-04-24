@@ -1919,7 +1919,7 @@ async function generateHappyRecommendations() {
       { threshold: 0.70, label: "Joyful" },
       { threshold: 0.65, label: "Uplifting" },
       { threshold: 0.60, label: "Cheerful" },
-      { threshold: 0, label: "Positive" }
+      { threshold: 0, label: "Happy" }
     ];
     
     // Ensure recommendations have all required properties and add happiness category
@@ -2128,7 +2128,7 @@ async function generateSadRecommendations() {
       { threshold: 0.75, label: "Melancholic" },
       { threshold: 0.65, label: "Wistful" },
       { threshold: 0.55, label: "Somber" },
-      { threshold: 0.45, label: "Reflective" },
+      { threshold: 0.45, label: "Sad" },
       { threshold: 0, label: "Slightly Sad" }
     ];
     
@@ -2337,7 +2337,7 @@ async function generateChillRecommendations() {
       { threshold: 0.65, label: "Super-Chill" },
       { threshold: 0.55, label: "Laid-Back" },
       { threshold: 0.45, label: "Mellow" },
-      { threshold: 0, label: "Easy-Going" }
+      { threshold: 0, label: "Chill" }
     ];
     
     // Ensure recommendations have all required properties and add chill category
@@ -2627,6 +2627,7 @@ async function generateEnergeticRecommendations() {
 }
 
 // Update the renderRecommendationsTemplate function to include the callback to our save function
+// Updated renderRecommendationsTemplate function to ensure proper order of track information
 function renderRecommendationsTemplate(targetId, { recommendations, playlistType, originalRequest }) {
   const targetElement = document.getElementById(targetId);
   if (!targetElement) {
@@ -2678,15 +2679,19 @@ function renderRecommendationsTemplate(targetId, { recommendations, playlistType
     const trackInfo = document.createElement("div");
     trackInfo.className = "track-info";
 
+    // First add track name (title)
     const trackName = document.createElement("div");
     trackName.className = "track-name";
     trackName.textContent = track.name;
+    trackInfo.appendChild(trackName);
 
+    // Then add artist name
     const trackArtist = document.createElement("div");
     trackArtist.className = "track-artist";
     trackArtist.textContent = track.artist;
+    trackInfo.appendChild(trackArtist);
 
-    // Only add genre if available
+    // Only after title and artist, add genre if available
     if (track.genre && track.genre !== "Unknown Genre") {
       const trackGenre = document.createElement("div");
       trackGenre.className = "track-genre";
@@ -2694,7 +2699,7 @@ function renderRecommendationsTemplate(targetId, { recommendations, playlistType
       trackInfo.appendChild(trackGenre);
     }
 
-    // Add score if available
+    // Finally add score if available
     if (track.score && track.score !== "N/A") {
       const trackScore = document.createElement("div");
       trackScore.className = "track-score";
@@ -2702,9 +2707,28 @@ function renderRecommendationsTemplate(targetId, { recommendations, playlistType
       trackInfo.appendChild(trackScore);
     }
 
-    // Append track info
-    trackInfo.appendChild(trackName);
-    trackInfo.appendChild(trackArtist);
+    // Add any special category/score information (for mood-based playlists)
+    if (track.happinessCategory) {
+      const moodCategory = document.createElement("div");
+      moodCategory.className = "mood-category";
+      moodCategory.textContent = `Mood: ${track.happinessCategory}`;
+      trackInfo.appendChild(moodCategory);
+    } else if (track.sadnessCategory) {
+      const moodCategory = document.createElement("div");
+      moodCategory.className = "mood-category";
+      moodCategory.textContent = `Mood: ${track.sadnessCategory}`;
+      trackInfo.appendChild(moodCategory);
+    } else if (track.chillCategory) {
+      const moodCategory = document.createElement("div");
+      moodCategory.className = "mood-category";
+      moodCategory.textContent = `Vibe: ${track.chillCategory}`;
+      trackInfo.appendChild(moodCategory);
+    } else if (track.energyCategory) {
+      const moodCategory = document.createElement("div");
+      moodCategory.className = "mood-category";
+      moodCategory.textContent = `Vibe: ${track.energyCategory}`;
+      trackInfo.appendChild(moodCategory);
+    }
 
     trackItem.appendChild(trackInfo);
 
@@ -2753,7 +2777,7 @@ function renderRecommendationsTemplate(targetId, { recommendations, playlistType
   
   targetElement.appendChild(recommendationsContainer);
 
-  // Add some CSS for the notice
+  // Add some CSS for the notice and mood categories
   const style = document.createElement('style');
   style.textContent = `
     .recommendation-notice {
@@ -2762,6 +2786,27 @@ function renderRecommendationsTemplate(targetId, { recommendations, playlistType
       padding: 10px 15px;
       margin-bottom: 15px;
       font-size: 14px;
+    }
+    
+    .track-name {
+      font-weight: bold;
+      font-size: 1.1em;
+      margin-bottom: 3px;
+    }
+    
+    .track-artist {
+      color: #aaa;
+      margin-bottom: 5px;
+    }
+    
+    .track-genre, .track-score, .mood-category {
+      font-size: 0.85em;
+      color: #888;
+      margin-top: 2px;
+    }
+    
+    .mood-category {
+      color: #1DB954;
     }
   `;
   document.head.appendChild(style);
