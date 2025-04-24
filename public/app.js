@@ -2629,7 +2629,7 @@ async function generateEnergeticRecommendations() {
   }
 }
 
-// Template rendering function for song recommendations
+// Update the renderRecommendationsTemplate function to include the callback to our save function
 function renderRecommendationsTemplate(targetId, { recommendations, playlistType }) {
   const targetElement = document.getElementById(targetId);
   if (!targetElement) {
@@ -2717,11 +2717,19 @@ function renderRecommendationsTemplate(targetId, { recommendations, playlistType
   const saveButton = document.createElement("button");
   saveButton.className = "save-spotify-btn";
   saveButton.textContent = playlistType 
-    ? `Save ${playlistType} Playlist to Spotify` 
+    ? `Save "${playlistType}" Playlist to Spotify` 
     : "Save to Spotify";
-  saveButton.onclick = function() {
-    window.saveCSVRecommendationsToSpotify();
-  };
+  
+  // Use the appropriate save function based on the context
+  if (playlistType && playlistType.includes("Based on")) {
+    saveButton.onclick = function() {
+      window.saveTrackBasedPlaylistToSpotify();
+    };
+  } else {
+    saveButton.onclick = function() {
+      window.saveCSVRecommendationsToSpotify();
+    };
+  }
   
   // Append button to playlist actions
   playlistActions.appendChild(saveButton);
@@ -2937,7 +2945,7 @@ async function createPlaylistFromTrack(trackId, trackName, artistName) {
     
     // Generate recommendations based on this single track
     console.log("Generating recommendations based on seed track...");
-    const recommendations = window.recommendationEngine.recommendSongs(30);
+    const recommendations = window.recommendationEngine.recommendSongs(10);
     console.log(`Generated ${recommendations.length} recommendations`);
     
     if (!recommendations || recommendations.length === 0) {
@@ -3111,6 +3119,110 @@ function renderSearchResultsTemplate(targetId, { searchResults }) {
   targetElement.appendChild(container);
 }
 
+// Function to handle saving song-based playlist to Spotify
+async function saveTrackBasedPlaylistToSpotify() {
+  // Check if we have recommendations
+  if (!lastCsvRecommendations || lastCsvRecommendations.length === 0) {
+    alert("Please generate recommendations first");
+    return;
+  }
+  
+  try {
+    console.log(`Saving ${currentPlaylistType || "Track-Based"} playlist to Spotify with ${lastCsvRecommendations.length} songs...`);
+    
+    const saveButton = document.querySelector('#search-results .save-spotify-btn');
+    if (saveButton) {
+      saveButton.textContent = "Saving...";
+      saveButton.disabled = true;
+    } else {
+      console.warn("Save button not found in search results");
+    }
+    
+    // Convert local recommendations to Spotify format if needed
+    const trackUris = [];
+    const tracksToFind = [];
+    
+    // Separate tracks with Spotify IDs from those that need to be searched
+    // Use the displayed recommendations to create the playlist
+    lastCsvRecommendations.forEach(track => {
+      if (track.id && !track.id.startsWith('local-')) {
+        trackUris.push(`spotify:track:${track.id}`);
+      } else {
+        tracksToFind.push({
+          name: track.name,
+          artist: track.artist
+        });
+      }
+    });
+    
+    // Search for tracks that don't have IDs
+    if (tracksToFind.length > 0) {
+      for (const track of tracksToFind) {
+        try {
+          // Search Spotify for the track
+          const query = `${track.name} artist:${track.artist}`;
+          const searchResults = await searchSpotify(query, 'track', 1);
+          
+          if (searchResults && searchResults.length > 0) {
+            trackUris.push(`spotify:track:${searchResults[0].id}`);
+          } else {
+            console.warn(`Could not find track on Spotify: ${track.name} by ${track.artist}`);
+          }
+        } catch (error) {
+          console.error(`Error searching for track ${track.name}:`, error);
+        }
+      }
+    }
+    
+    // Create a descriptive playlist name
+    const playlistName = `Songs Similar to "${currentPlaylistType.replace('Based on "', '').replace('"', '')}" by Spotify Genie`;
+    const result = await savePlaylistToSpotify(playlistName, trackUris);
+    
+    // Update UI based on result
+    if (result.success) {
+      // Create success message with link
+      const resultsContainer = document.getElementById('search-results');
+      const successMessage = document.createElement('div');
+      successMessage.className = 'success-message';
+      successMessage.innerHTML = `
+        <p>Playlist "${result.playlistName}" with ${trackUris.length} songs saved successfully!</p>
+        <a href="${result.playlistUrl}" target="_blank" class="spotify-button">
+          <i class="fab fa-spotify" style="color: green;"></i> Open in Spotify
+        </a>
+      `;
+      
+      // Add success message to the container
+      resultsContainer.appendChild(successMessage);
+      
+      // Update button
+      if (saveButton) {
+        saveButton.textContent = "Saved to Spotify ✓";
+        saveButton.disabled = true;
+      }
+    } else {
+      // Show error
+      alert(`Failed to save playlist: ${result.error}`);
+      
+      // Reset button
+      if (saveButton) {
+        saveButton.textContent = `Save to Spotify`;
+        saveButton.disabled = false;
+      }
+    }
+  } catch (error) {
+    console.error("Error saving recommendations to Spotify:", error);
+    alert(`Error saving recommendations: ${error.message}`);
+    
+    // Reset button
+    const saveButton = document.querySelector('#search-results .save-spotify-btn');
+    if (saveButton) {
+      saveButton.textContent = `Save to Spotify`;
+      saveButton.disabled = false;
+    }
+  }
+}
+
+
 // Add CSS for the Create Playlist button
 const style = document.createElement('style');
 style.textContent = `
@@ -3157,3 +3269,4 @@ window.handleSearch = handleSearch;
 window.createPlaylistFromTrack = createPlaylistFromTrack;
 window.handleGeneratePlaylist = handleGeneratePlaylist;
 window.exportLikedSongsToCSV = exportLikedSongsToCSV;
+window.saveTrackBasedPlaylistToSpotify = saveTrackBasedPlaylistToSpotify;
