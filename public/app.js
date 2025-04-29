@@ -32,13 +32,6 @@ const currentToken = {
   }
 };
 
-// Function to format expiration date
-function getExpirationDate(expires_in) {
-  const now = new Date();
-  const expiry = new Date(now.getTime() + (expires_in * 1000));
-  return expiry.toLocaleString();
-}
-
 // Get code from URL
 const args = new URLSearchParams(window.location.search);
 const code = args.get('code');
@@ -82,7 +75,7 @@ async function loadDefaultDataset() {
           fields: results.meta.fields
         });
         
-        updateLoadingMessage("Curating your future playlist obsession...");
+        updateLoadingMessage("Finishing up...");
         
         // Store the dataset in the recommendation engine
         window.recommendationEngine.dataset = results.data;
@@ -189,15 +182,8 @@ async function autoLoadLikedSongs() {
 }
 
 // MAIN APP INITIALIZATION
-// MAIN APP INITIALIZATION
 async function initApp() {
-  // Add all custom styles first
-  addStyles();
-  addLoadingStyles(); // Add main loading styles
-  addLoadingMessageStyles(); // Add loading message styles
-  addComponentLoadingStyles(); // Add component-specific loading styles
-  updateCSSForPreloadedDataset();
-  
+  addLoadingMessageStyles();
   console.log("==== APP INITIALIZATION STARTED ====");
 
   // Show loading overlay immediately
@@ -298,54 +284,6 @@ async function initApp() {
   }
  
   console.log("==== APP INITIALIZATION COMPLETED ====");
-}
-
-// Helper function for adding main loading overlay styles
-function addLoadingStyles() {
-  const styleEl = document.createElement('style');
-  styleEl.id = 'loading-styles';
-  styleEl.textContent = `
-    .loading-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0, 0, 0, 0.85);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 9999;
-      opacity: 1;
-      transition: opacity 0.5s ease;
-    }
-    
-    .loading-overlay.fade-out {
-      opacity: 0;
-    }
-    
-    .loading-content {
-      text-align: center;
-      color: white;
-    }
-    
-    .loading-spinner {
-      display: inline-block;
-      width: 60px;
-      height: 60px;
-      border: 4px solid rgba(255, 255, 255, 0.3);
-      border-radius: 50%;
-      border-top-color: #1DB954;
-      animation: spin 1s ease-in-out infinite;
-      margin-bottom: 20px;
-    }
-    
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-  `;
-  
-  document.head.appendChild(styleEl);
 }
 
 // createContainers function to log more information
@@ -1710,136 +1648,6 @@ function addLoadingMessageStyles() {
   document.head.appendChild(styleEl);
 }
 
-// Modified version that adds animated dots
-function updateLoadingMessageWithDots(message) {
-  const messageElement = document.getElementById('loading-message');
-  if (messageElement) {
-    // Add fade-out effect
-    messageElement.classList.add('message-fade-out');
-    
-    // After fade-out completes, update text and fade back in
-    setTimeout(() => {
-      // Remove any existing dots span
-      const existingDots = messageElement.querySelector('.loading-dots');
-      if (existingDots) {
-        existingDots.remove();
-      }
-      
-      // Set the new message text
-      messageElement.textContent = message;
-      
-      // Add animated dots
-      const dotsSpan = document.createElement('span');
-      dotsSpan.className = 'loading-dots';
-      messageElement.appendChild(dotsSpan);
-      
-      // Show the message
-      messageElement.classList.remove('message-fade-out');
-      messageElement.classList.add('message-fade-in');
-      
-      // Remove the fade-in class after animation completes
-      setTimeout(() => {
-        messageElement.classList.remove('message-fade-in');
-      }, 500);
-    }, 300);
-  }
-}
-
-function addComponentLoadingStyles() {
-  const styleEl = document.createElement('style');
-  styleEl.id = 'component-loading-styles';
-  styleEl.textContent = `
-    /* Styles for loading indicators in search results */
-    #search-results .loading-message,
-    #playlist-results .loading-message,
-    #csv-recommendations-results .loading-message {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-      padding: 30px 20px;
-      font-size: 16px;
-      color: #1DB954;
-      width: 100%;
-      min-height: 120px;
-      background-color: rgba(29, 185, 84, 0.05);
-      border-radius: 8px;
-      margin: 15px 0;
-    }
-    
-    /* Loading animation for component loading messages */
-    #search-results .loading-message::before,
-    #playlist-results .loading-message::before,
-    #csv-recommendations-results .loading-message::before {
-      content: '';
-      display: inline-block;
-      width: 20px;
-      height: 20px;
-      border: 3px solid rgba(29, 185, 84, 0.2);
-      border-radius: 50%;
-      border-top-color: #1DB954;
-      animation: spin 1s linear infinite;
-      margin-right: 12px;
-    }
-    
-    /* Center text in error messages too */
-    .error-message {
-      text-align: center;
-      width: 100%;
-      padding: 15px;
-      margin: 10px 0;
-      background-color: rgba(255, 99, 71, 0.1);
-      border-radius: 6px;
-      color: #ff6347;
-      border-left: 4px solid #ff6347;
-    }
-    
-    /* Center text in info messages */
-    .info-message {
-      text-align: center;
-      width: 100%;
-      padding: 15px;
-      margin: 10px 0;
-      background-color: rgba(100, 149, 237, 0.1);
-      border-radius: 6px;
-      color: #6495ed;
-      border-left: 4px solid #6495ed;
-    }
-    
-    /* Ensure success messages are also centered */
-    .success-message {
-      text-align: center;
-      width: 100%;
-      padding: 15px;
-      margin: 15px 0;
-      background-color: rgba(29, 185, 84, 0.1);
-      border-radius: 6px;
-      color: #1DB954;
-      border-left: 4px solid #1DB954;
-    }
-    
-    /* Center the Spotify button in success messages */
-    .success-message a.spotify-button {
-      display: block;
-      width: fit-content;
-      margin: 15px auto 5px;
-      padding: 8px 16px;
-      background-color: #1DB954;
-      color: white;
-      text-decoration: none;
-      border-radius: 20px;
-      font-weight: bold;
-      transition: background-color 0.3s ease;
-    }
-    
-    .success-message a.spotify-button:hover {
-      background-color: #1ed760;
-    }
-  `;
-  
-  document.head.appendChild(styleEl);
-}
-
 // Function to hide the loading overlay
 function hideLoadingOverlay() {
   const overlay = document.getElementById('loading-overlay');
@@ -1856,64 +1664,9 @@ function hideLoadingOverlay() {
   }
 }
 
-// Add this CSS to your styles
-function addLoadingStyles() {
-  const styleEl = document.createElement('style');
-  styleEl.id = 'loading-styles';
-  styleEl.textContent = `
-    .loading-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0, 0, 0, 0.85);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      z-index: 9999;
-      opacity: 1;
-      transition: opacity 0.5s ease;
-    }
-    
-    .loading-overlay.fade-out {
-      opacity: 0;
-    }
-    
-    .loading-content {
-      text-align: center;
-      color: white;
-    }
-    
-    .loading-spinner {
-      display: inline-block;
-      width: 60px;
-      height: 60px;
-      border: 4px solid rgba(255, 255, 255, 0.3);
-      border-radius: 50%;
-      border-top-color: #1DB954;
-      animation: spin 1s ease-in-out infinite;
-      margin-bottom: 20px;
-    }
-    
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    
-    #loading-message {
-      font-size: 18px;
-      font-weight: 300;
-      margin: 10px 0;
-    }
-  `;
-  
-  document.head.appendChild(styleEl);
-}
-
 /**
- * CSV Recommendation Feature Integration for Spotify Genie
+ * CSV Recommendation Feature
  */
-
 // Global instance of recommendation engine
 let recommendationEngine = null;
 
@@ -3303,40 +3056,6 @@ function renderRecommendationsTemplate(targetId, { recommendations, playlistType
   recommendationsContainer.appendChild(playlistActions);
   
   targetElement.appendChild(recommendationsContainer);
-
-  // Add some CSS for the notice and mood categories
-  const style = document.createElement('style');
-  style.textContent = `
-    .recommendation-notice {
-      background-color: rgba(255, 193, 7, 0.1);
-      border-left: 4px solid #ffc107;
-      padding: 10px 15px;
-      margin-bottom: 15px;
-      font-size: 14px;
-    }
-    
-    .track-name {
-      font-weight: bold;
-      font-size: 1.1em;
-      margin-bottom: 3px;
-    }
-    
-    .track-artist {
-      color: #aaa;
-      margin-bottom: 5px;
-    }
-    
-    .track-genre, .track-score, .mood-category {
-      font-size: 0.85em;
-      color: #888;
-      margin-top: 2px;
-    }
-    
-    .mood-category {
-      color: #1DB954;
-    }
-  `;
-  document.head.appendChild(style);
 }
 
 // Fix the save function to save only the displayed 10 songs
@@ -3363,7 +3082,6 @@ async function saveCSVRecommendationsToSpotify() {
     const tracksToFind = [];
     
     // Separate tracks with Spotify IDs from those that need to be searched
-    // IMPORTANT: Use lastDisplayedRecommendations instead of lastCsvRecommendations
     lastDisplayedRecommendations.forEach(track => {
       if (track.id && !track.id.startsWith('local-')) {
         trackUris.push(`spotify:track:${track.id}`);
@@ -3441,30 +3159,6 @@ async function saveCSVRecommendationsToSpotify() {
       saveButton.disabled = false;
     }
   }
-}
-
-function updateCSSForPreloadedDataset() {
-  const styleEl = document.createElement('style');
-  styleEl.id = 'preloaded-dataset-styles';
-  styleEl.textContent = `
-    #dataset-status.preloaded {
-      color: #1DB954;
-      font-weight: bold;
-    }
-    
-    .dataset-preloaded-note {
-      font-size: 0.9em;
-      color: #999;
-      margin-top: 5px;
-      font-style: italic;
-    }
-    
-    .dataset-actions {
-      margin-top: 10px;
-    }
-  `;
-  
-  document.head.appendChild(styleEl);
 }
 
 // Global variable to store last generated CSV recommendations
@@ -3899,38 +3593,6 @@ async function saveTrackBasedPlaylistToSpotify() {
     }
   }
 }
-
-
-// Add CSS for the Create Playlist button
-const style = document.createElement('style');
-style.textContent = `
-  .create-playlist-btn {
-    background-color: #1DB954;
-    color: white;
-    border: none;
-    border-radius: 20px;
-    padding: 5px 10px;
-    margin-top: 5px;
-    cursor: pointer;
-    font-size: 12px;
-    transition: background-color 0.3s ease;
-  }
-  
-  .create-playlist-btn:hover {
-    background-color: #1ed760;
-  }
-  
-  .similar-song-badge {
-    background-color: rgba(29, 185, 84, 0.1);
-    color: #1DB954;
-    border: 1px solid #1DB954;
-    border-radius: 10px;
-    padding: 2px 6px;
-    font-size: 10px;
-    margin-left: 5px;
-  }
-`;
-document.head.appendChild(style);
 
 window.logoutClick = function() {
   localStorage.clear();
