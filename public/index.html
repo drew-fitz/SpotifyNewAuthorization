@@ -94,30 +94,6 @@
     <button onclick="loginWithSpotifyClick()">Log in with Spotify</button>
   </template>
 
-
-  <template id="logged-in-template">
-    <h1>Logged in as <span data-bind="display_name"></span></h1>
-    <img width="150" data-bind-src="images[0].url" data-bind-alt="display_name" />
-    <table>
-      <tr>
-        <td>Display name</td>
-        <td data-bind="display_name"></td>
-      </tr>
-      <tr>
-        <td>Email</td>
-        <td data-bind="email"></td>
-      </tr>
-      <tr>
-        <td>Spotify URI</td>
-        <td><a data-bind="external_urls.spotify" data-bind-href="external_urls.spotify"></a></td>
-      </tr>
-    </table>
-
-
-    <button onclick="refreshTokenClick()">Refresh Token</button>
-    <button onclick="window.logoutClick()">Logout</button>
-  </template>
-
   <template id="search-form-template">
     <div class="search-container">
       <h3>Search for Tracks</h3>

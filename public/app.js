@@ -215,8 +215,7 @@ async function initApp() {
       // Render user profile
       const userData = await getUserData();
       console.log("User data fetched successfully:", userData);
-      renderTemplate("main", "logged-in-template", userData);
-      
+
       // Create containers
       createContainers();
       
@@ -224,7 +223,6 @@ async function initApp() {
       renderTemplate("search-form-container", "search-form-template");
             
       // Render CSV recommendations container
-      renderTemplate("main", "logged-in-template", userData);
       renderTemplate("main", "csv-recommendations-container-template");
       
       // Auto-load liked songs for recommendations
@@ -381,7 +379,6 @@ function exportLikedSongsToCSV() {
   });
 }
 
-
 // SPOTIFY API FUNCTIONS
 // Auth flow
 async function redirectToSpotifyAuthorize() {
@@ -511,7 +508,6 @@ async function getUserSavedTracks(limit =10) {
   }
 }
 
-// Fix for searchSpotify function to properly handle API response
 async function searchSpotify(query, type = 'track', limit = 10) {
   if (!query) return [];
 
@@ -552,7 +548,6 @@ async function searchSpotify(query, type = 'track', limit = 10) {
   }
 }
 
-// renderTracksTemplate function to ensure the export button is always added
 function renderTracksTemplate(targetId, tracks) {
   console.log(`Rendering ${tracks.length} tracks to ${targetId}`);
   const targetElement = document.getElementById(targetId);
@@ -625,55 +620,6 @@ function renderTracksTemplate(targetId, tracks) {
   targetElement.appendChild(container);
 }
 
-// Add CSS styles to position album covers on the right
-function addStyles() {
-  // Check if our styles are already added
-  if (document.getElementById('spotify-genie-styles')) return;
-  
-  const styleEl = document.createElement('style');
-  styleEl.id = 'spotify-genie-styles';
-  styleEl.textContent = `
-    .track-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 10px;
-      padding: 10px;
-      border-radius: 4px;
-      background-color: #333;
-    }
-    
-    .track-info {
-      flex-grow: 1;
-      margin-right: 10px;
-    }
-    
-    .track-name {
-      font-weight: bold;
-      margin-bottom: 5px;
-    }
-    
-    .track-artist {
-      color: #666;
-    }
-    
-    .album-cover {
-      width: 60px;
-      height: 60px;
-      object-fit: cover;
-      border-radius: 4px;
-    }
-    
-    .track-list {
-      margin-bottom: 20px;
-    }
-  `;
-  
-  document.head.appendChild(styleEl);
-  console.log("Added custom styles for track display");
-}
-
-
 // Get saved tracks with audio features
 async function getSavedTracksWithFeatures() {
   console.log("Fetching saved tracks with audio features");
@@ -703,10 +649,6 @@ async function getSavedTracksWithFeatures() {
   return tracksWithFeatures;
 }
 
-/**
- * Integration code for playlist generators in Spotify Genie
- * Adds the new playlist generator functions to the app
- */
 function processTracksForPlaylist(trackItems, playlistType) {
   console.log(`Processing ${trackItems.length} tracks for ${playlistType} playlist`);
   
@@ -779,9 +721,6 @@ function getPlaylistDisplayName(type) {
     'mood-chill': 'Chill',
     'mood-hype': 'Hype',
     'throwback': 'Throwback',
-    'past-favorites': 'Past Favorites',
-    'new-releases': 'New Releases',
-    'genre-explorer': 'Genre Explorer'
   };
   
   return typeMap[type] || type.replace('-', ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -1111,7 +1050,6 @@ async function handleGeneratePlaylist(event) {
     }
   }
 }
-// Make sure to wire up the save function
 window.saveToSpotify = handleSaveToSpotify;
 
 // EVENT HANDLERS
