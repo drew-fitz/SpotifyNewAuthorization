@@ -46,6 +46,7 @@ const code = args.get('code');
 // Add this function to automatically load a default dataset
 async function loadDefaultDataset() {
   console.log("Attempting to load default dataset...");
+  updateLoadingMessage("Loading music dataset...");
   
   try {
     // Initialize recommendation engine if not already done
@@ -53,6 +54,8 @@ async function loadDefaultDataset() {
       window.recommendationEngine = new window.RecommendationEngine();
       console.log("Created new recommendation engine instance");
     }
+    
+    updateLoadingMessage("Finding your new favorite songs...");
     
     // URL to your hosted dataset - this should be a relative path to where you host the CSV
     const datasetUrl = 'spotify_tracks.csv';
@@ -66,6 +69,8 @@ async function loadDefaultDataset() {
     const csvContent = await response.text();
     console.log("Dataset fetched successfully, first 100 chars:", csvContent.substring(0, 100));
     
+    updateLoadingMessage("Processing music data...");
+    
     // Parse the CSV content
     Papa.parse(csvContent, {
       header: true,
@@ -76,6 +81,8 @@ async function loadDefaultDataset() {
           rowCount: results.data.length,
           fields: results.meta.fields
         });
+        
+        updateLoadingMessage("Curating your future playlist obsession...");
         
         // Store the dataset in the recommendation engine
         window.recommendationEngine.dataset = results.data;
@@ -98,16 +105,21 @@ async function loadDefaultDataset() {
             document.getElementById('generate-recommendations-btn').disabled = false;
             updateMoodButtonStates();
           }
+          
+          updateLoadingMessage("");
         } catch (preprocessError) {
           console.error("Error during preprocessing:", preprocessError);
+          updateLoadingMessage("Error preprocessing music data.");
         }
       },
       error: (error) => {
         console.error("Error parsing dataset CSV:", error);
+        updateLoadingMessage("Error loading music data.");
       }
     });
   } catch (error) {
     console.error("Error loading default dataset:", error);
+    updateLoadingMessage("Failed to load music dataset.");
   }
 }
 
@@ -177,11 +189,19 @@ async function autoLoadLikedSongs() {
 }
 
 // MAIN APP INITIALIZATION
+// MAIN APP INITIALIZATION
 async function initApp() {
-  // Add custom styles first
+  // Add all custom styles first
   addStyles();
+  addLoadingStyles(); // Add main loading styles
+  addLoadingMessageStyles(); // Add loading message styles
+  addComponentLoadingStyles(); // Add component-specific loading styles
   updateCSSForPreloadedDataset();
+  
   console.log("==== APP INITIALIZATION STARTED ====");
+
+  // Show loading overlay immediately
+  showLoadingOverlay("Starting Spotify Genie...");
 
   await loadDefaultDataset();
  
@@ -238,8 +258,14 @@ async function initApp() {
         
         // Render tracks
         renderTracksTemplate("tracks-container", tracks);
+        
+        // Hide loading overlay when everything is loaded
+        hideLoadingOverlay();
       } catch (error) {
         console.error("Error fetching saved tracks:", error);
+        
+        // Hide loading overlay even on error
+        hideLoadingOverlay();
         
         if (document.getElementById("tracks-container")) {
           document.getElementById("tracks-container").innerHTML = `
@@ -252,8 +278,12 @@ async function initApp() {
       }
     } catch (error) {
       console.error("Error initializing logged-in state:", error);
-        // Check if it's a token expired error
-        if (error.message && error.message.includes("token expired")) {
+      
+      // Hide loading overlay on error
+      hideLoadingOverlay();
+      
+      // Check if it's a token expired error
+      if (error.message && error.message.includes("token expired")) {
         console.log("Clearing expired token and redirecting to login");
         localStorage.clear();
         renderTemplate("main", "login");
@@ -262,11 +292,61 @@ async function initApp() {
   } else {
     console.log("No access token found, rendering login template");
     renderTemplate("main", "login");
+    
+    // Hide loading overlay for login screen
+    hideLoadingOverlay();
   }
  
   console.log("==== APP INITIALIZATION COMPLETED ====");
 }
 
+// Helper function for adding main loading overlay styles
+function addLoadingStyles() {
+  const styleEl = document.createElement('style');
+  styleEl.id = 'loading-styles';
+  styleEl.textContent = `
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      opacity: 1;
+      transition: opacity 0.5s ease;
+    }
+    
+    .loading-overlay.fade-out {
+      opacity: 0;
+    }
+    
+    .loading-content {
+      text-align: center;
+      color: white;
+    }
+    
+    .loading-spinner {
+      display: inline-block;
+      width: 60px;
+      height: 60px;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #1DB954;
+      animation: spin 1s ease-in-out infinite;
+      margin-bottom: 20px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  `;
+  
+  document.head.appendChild(styleEl);
+}
 
 // createContainers function to log more information
 function createContainers() {
@@ -1381,6 +1461,454 @@ function evalInContext(expr, context) {
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', initApp);
+
+// Add this function to your code to create and manage the loading overlay
+// Updated function for creating and managing the loading overlay
+function showLoadingOverlay(message = "Loading Spotify Genie...") {
+  // Check if overlay already exists
+  if (document.getElementById('loading-overlay')) {
+    updateLoadingMessage(message);
+    return;
+  }
+  
+  // Create overlay container
+  const overlay = document.createElement('div');
+  overlay.id = 'loading-overlay';
+  overlay.className = 'loading-overlay';
+  
+  // Create content container
+  const content = document.createElement('div');
+  content.className = 'loading-content';
+  
+  // Create loading spinner
+  const spinner = document.createElement('div');
+  spinner.className = 'loading-spinner';
+  
+  // Create message element
+  const messageElement = document.createElement('p');
+  messageElement.id = 'loading-message';
+  messageElement.textContent = message;
+  
+  // Assemble elements
+  content.appendChild(spinner);
+  content.appendChild(messageElement);
+  overlay.appendChild(content);
+  document.body.appendChild(overlay);
+}
+
+// Updated function to update the loading message with improved animation
+function updateLoadingMessage(message) {
+  const messageElement = document.getElementById('loading-message');
+  if (messageElement) {
+    // Add fade-out effect
+    messageElement.classList.add('message-fade-out');
+    
+    // After fade-out completes, update text and fade back in
+    setTimeout(() => {
+      // Remove any existing dots span
+      const existingDots = messageElement.querySelector('.loading-dots');
+      if (existingDots) {
+        existingDots.remove();
+      }
+      
+      // Set the new message text
+      messageElement.textContent = message;
+      
+      // Add animated dots for ongoing processes
+      if (message && !message.endsWith('...') && !message.endsWith('.')) {
+        const dotsSpan = document.createElement('span');
+        dotsSpan.className = 'loading-dots';
+        messageElement.appendChild(dotsSpan);
+      }
+      
+      // Show the message
+      messageElement.classList.remove('message-fade-out');
+      messageElement.classList.add('message-fade-in');
+      
+      // Remove the fade-in class after animation completes
+      setTimeout(() => {
+        messageElement.classList.remove('message-fade-in');
+      }, 500);
+    }, 300);
+  }
+}
+
+// Function to hide the loading overlay with a smooth fade-out animation
+function hideLoadingOverlay() {
+  const overlay = document.getElementById('loading-overlay');
+  if (overlay) {
+    // Add fade-out class
+    overlay.classList.add('fade-out');
+    
+    // Remove after animation completes
+    setTimeout(() => {
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    }, 500); // Match this to your CSS transition time
+  }
+}
+
+function addLoadingMessageStyles() {
+  const styleEl = document.createElement('style');
+  styleEl.id = 'loading-message-styles';
+  styleEl.textContent = `
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      opacity: 1;
+      transition: opacity 0.5s ease;
+    }
+    
+    .loading-content {
+      text-align: center;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .loading-spinner {
+      display: inline-block;
+      width: 60px;
+      height: 60px;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #1DB954;
+      animation: spin 1s ease-in-out infinite;
+      margin-bottom: 20px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    #loading-message {
+      font-size: 20px;
+      font-weight: 400;
+      color: white;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+      margin: 15px 0;
+      padding: 10px;
+      max-width: 80%;
+      margin: 0 auto;
+      text-align: center;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    
+    .message-fade-out {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    
+    .message-fade-in {
+      animation: messageAppear 0.5s ease forwards;
+    }
+    
+    @keyframes messageAppear {
+      0% {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    /* Add a decorative element below the text */
+    #loading-message::after {
+      content: '';
+      display: block;
+      width: 40px;
+      height: 3px;
+      background: linear-gradient(90deg, #1DB954, #1ED760);
+      margin: 15px auto 0;
+      border-radius: 3px;
+    }
+    
+    /* Style for dots that appear after the message */
+    .loading-dots {
+      display: inline-block;
+      position: relative;
+      width: 30px;
+      text-align: left;
+    }
+    
+    .loading-dots::after {
+      content: '...';
+      position: absolute;
+      left: 0;
+      animation: loadingDots 1.5s infinite;
+      letter-spacing: 2px;
+    }
+    
+    @keyframes loadingDots {
+      0%, 20% { content: '.'; }
+      40% { content: '..'; }
+      60%, 100% { content: '...'; }
+    }
+    
+    /* Center regular loading messages in the app */
+    .loading-message {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 20px;
+      font-size: 16px;
+      color: #1DB954;
+      width: 100%;
+    }
+    
+    .loading-message::before {
+      content: '';
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(29, 185, 84, 0.3);
+      border-radius: 50%;
+      border-top-color: #1DB954;
+      animation: spin 1s linear infinite;
+      margin-right: 10px;
+    }
+    
+    /* For centered loading state within components */
+    p.loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 20px;
+      font-size: 16px;
+      color: #1DB954;
+      width: 100%;
+    }
+    
+    p.loading::before {
+      content: '';
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(29, 185, 84, 0.3);
+      border-radius: 50%;
+      border-top-color: #1DB954;
+      animation: spin 1s linear infinite;
+      margin-right: 10px;
+    }
+  `;
+  
+  document.head.appendChild(styleEl);
+}
+
+// Modified version that adds animated dots
+function updateLoadingMessageWithDots(message) {
+  const messageElement = document.getElementById('loading-message');
+  if (messageElement) {
+    // Add fade-out effect
+    messageElement.classList.add('message-fade-out');
+    
+    // After fade-out completes, update text and fade back in
+    setTimeout(() => {
+      // Remove any existing dots span
+      const existingDots = messageElement.querySelector('.loading-dots');
+      if (existingDots) {
+        existingDots.remove();
+      }
+      
+      // Set the new message text
+      messageElement.textContent = message;
+      
+      // Add animated dots
+      const dotsSpan = document.createElement('span');
+      dotsSpan.className = 'loading-dots';
+      messageElement.appendChild(dotsSpan);
+      
+      // Show the message
+      messageElement.classList.remove('message-fade-out');
+      messageElement.classList.add('message-fade-in');
+      
+      // Remove the fade-in class after animation completes
+      setTimeout(() => {
+        messageElement.classList.remove('message-fade-in');
+      }, 500);
+    }, 300);
+  }
+}
+
+function addComponentLoadingStyles() {
+  const styleEl = document.createElement('style');
+  styleEl.id = 'component-loading-styles';
+  styleEl.textContent = `
+    /* Styles for loading indicators in search results */
+    #search-results .loading-message,
+    #playlist-results .loading-message,
+    #csv-recommendations-results .loading-message {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 30px 20px;
+      font-size: 16px;
+      color: #1DB954;
+      width: 100%;
+      min-height: 120px;
+      background-color: rgba(29, 185, 84, 0.05);
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    
+    /* Loading animation for component loading messages */
+    #search-results .loading-message::before,
+    #playlist-results .loading-message::before,
+    #csv-recommendations-results .loading-message::before {
+      content: '';
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(29, 185, 84, 0.2);
+      border-radius: 50%;
+      border-top-color: #1DB954;
+      animation: spin 1s linear infinite;
+      margin-right: 12px;
+    }
+    
+    /* Center text in error messages too */
+    .error-message {
+      text-align: center;
+      width: 100%;
+      padding: 15px;
+      margin: 10px 0;
+      background-color: rgba(255, 99, 71, 0.1);
+      border-radius: 6px;
+      color: #ff6347;
+      border-left: 4px solid #ff6347;
+    }
+    
+    /* Center text in info messages */
+    .info-message {
+      text-align: center;
+      width: 100%;
+      padding: 15px;
+      margin: 10px 0;
+      background-color: rgba(100, 149, 237, 0.1);
+      border-radius: 6px;
+      color: #6495ed;
+      border-left: 4px solid #6495ed;
+    }
+    
+    /* Ensure success messages are also centered */
+    .success-message {
+      text-align: center;
+      width: 100%;
+      padding: 15px;
+      margin: 15px 0;
+      background-color: rgba(29, 185, 84, 0.1);
+      border-radius: 6px;
+      color: #1DB954;
+      border-left: 4px solid #1DB954;
+    }
+    
+    /* Center the Spotify button in success messages */
+    .success-message a.spotify-button {
+      display: block;
+      width: fit-content;
+      margin: 15px auto 5px;
+      padding: 8px 16px;
+      background-color: #1DB954;
+      color: white;
+      text-decoration: none;
+      border-radius: 20px;
+      font-weight: bold;
+      transition: background-color 0.3s ease;
+    }
+    
+    .success-message a.spotify-button:hover {
+      background-color: #1ed760;
+    }
+  `;
+  
+  document.head.appendChild(styleEl);
+}
+
+// Function to hide the loading overlay
+function hideLoadingOverlay() {
+  const overlay = document.getElementById('loading-overlay');
+  if (overlay) {
+    // Add fade-out class
+    overlay.classList.add('fade-out');
+    
+    // Remove after animation completes
+    setTimeout(() => {
+      if (overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    }, 500); // Match this to your CSS transition time
+  }
+}
+
+// Add this CSS to your styles
+function addLoadingStyles() {
+  const styleEl = document.createElement('style');
+  styleEl.id = 'loading-styles';
+  styleEl.textContent = `
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.85);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      opacity: 1;
+      transition: opacity 0.5s ease;
+    }
+    
+    .loading-overlay.fade-out {
+      opacity: 0;
+    }
+    
+    .loading-content {
+      text-align: center;
+      color: white;
+    }
+    
+    .loading-spinner {
+      display: inline-block;
+      width: 60px;
+      height: 60px;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #1DB954;
+      animation: spin 1s ease-in-out infinite;
+      margin-bottom: 20px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    #loading-message {
+      font-size: 18px;
+      font-weight: 300;
+      margin: 10px 0;
+    }
+  `;
+  
+  document.head.appendChild(styleEl);
+}
 
 /**
  * CSV Recommendation Feature Integration for Spotify Genie
