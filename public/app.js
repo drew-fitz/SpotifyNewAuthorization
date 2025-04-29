@@ -255,6 +255,12 @@ async function initApp() {
       }
     } catch (error) {
       console.error("Error initializing logged-in state:", error);
+        // Check if it's a token expired error
+        if (error.message && error.message.includes("token expired")) {
+        console.log("Clearing expired token and redirecting to login");
+        localStorage.clear();
+        renderTemplate("main", "login");
+      }
     }
   } else {
     console.log("No access token found, rendering login template");
