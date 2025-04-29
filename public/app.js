@@ -707,8 +707,6 @@ async function getSavedTracksWithFeatures() {
  * Integration code for playlist generators in Spotify Genie
  * Adds the new playlist generator functions to the app
  */
-
-// Update the processTracksForPlaylist function to use our new playlist generators
 function processTracksForPlaylist(trackItems, playlistType) {
   console.log(`Processing ${trackItems.length} tracks for ${playlistType} playlist`);
   
@@ -771,92 +769,6 @@ function processTracksForPlaylist(trackItems, playlistType) {
       return getMoodPlaylist(tracks, 'happy');
   }
 }
-
-// Replace the handleGeneratePlaylist function with this updated version
-async function handleGeneratePlaylist(event) {
-  event.preventDefault();
-  const selectedType = document.querySelector('input[name="playlist-type"]:checked');
- 
-  if (!selectedType) {
-    console.error("No playlist type selected");
-    document.getElementById("playlist-results").innerHTML = 
-      '<div class="error-message">Please select a playlist type</div>';
-    return;
-  }
- 
-  const playlistType = selectedType.value;
-  console.log(`Generating playlist of type: ${playlistType}`);
- 
-  try {
-    // Show loading indicator
-    const submitButton = document.querySelector('#playlist-form button[type="submit"]');
-    if (submitButton) {
-      submitButton.textContent = "Generating...";
-      submitButton.disabled = true;
-    }
-    
-    document.getElementById("playlist-results").innerHTML = 
-      '<div class="loading-message">Generating your perfect playlist...</div>';
-    
-    // Get user's saved tracks for processing
-    console.log("Fetching tracks for playlist generation...");
-    const savedTracksResponse = await fetch('https://api.spotify.com/v1/me/tracks?limit=50', {
-      method: 'GET',
-      headers: { 'Authorization': 'Bearer ' + currentToken.access_token },
-    });
-    
-    if (!savedTracksResponse.ok) {
-      throw new Error(`Failed to fetch tracks: ${savedTracksResponse.status}`);
-    }
-    
-    const savedTracksData = await savedTracksResponse.json();
-    
-    if (!savedTracksData.items || savedTracksData.items.length === 0) {
-      throw new Error("No tracks found in your library");
-    }
-    
-    // Step 2: Get track IDs and prepare for audio features request
-    const trackIds = savedTracksData.items.map(item => item.track.id);
-    
-    // Step 3: Get audio features for better playlist generation
-    console.log("Fetching audio features for tracks...");
-    const tracksWithFeatures = await getAudioFeatures(trackIds, savedTracksData.items);
-    
-    // Step 4: Use our playlist generator functions
-    console.log(`Generating ${playlistType} playlist with ${tracksWithFeatures.length} tracks...`);
-    const playlistTracks = await processTracksByType(tracksWithFeatures, playlistType);
-    
-    console.log(`Generated playlist with ${playlistTracks.length} tracks`);
-    
-    // Store the generated playlist for potential saving to Spotify
-    lastGeneratedPlaylist = {
-      type: playlistType,
-      tracks: playlistTracks,
-      generatedAt: new Date()
-    };
-    
-    // Render the playlist to the UI
-    renderPlaylistResultsTemplate("playlist-results", {
-      playlistTracks,
-      playlistType
-    });
-    
-  } catch (error) {
-    console.error("Error generating playlist:", error);
-    document.getElementById("playlist-results").innerHTML =
-      `<div class="error-message">Error generating playlist: ${error.message}</div>`;
-  } finally {
-    // Reset button
-    const submitButton = document.querySelector('#playlist-form button[type="submit"]');
-    if (submitButton) {
-      submitButton.textContent = "Generate Playlist";
-      submitButton.disabled = false;
-    }
-  }
-}
-
-// Make sure the functions are available globally for use in event handlers
-window.handleGeneratePlaylist = handleGeneratePlaylist;
 
 // Function to get a readable name from playlist type
 function getPlaylistDisplayName(type) {
@@ -949,99 +861,6 @@ async function handleSaveToSpotify() {
   }
 }
 
-// Helper function to process tracks based on playlist type
-function processTracksForPlaylist(trackItems, playlistType) {
-  console.log(`Processing ${trackItems.length} tracks for ${playlistType} playlist`);
-  
-  // Map tracks to a common format with audio features
-  const tracks = trackItems.map(item => {
-    // Handle both saved tracks format and top tracks format
-    const track = item.track || item;
-    return {
-      name: track.name,
-      artist: track.artists.map(a => a.name).join(', '),
-      id: track.id,
-      albumCover: track.album && track.album.images && track.album.images.length > 0 
-        ? track.album.images[0].url 
-        : '',
-      popularity: track.popularity || 50,
-      // We don't have audio features, but we'll use other properties
-      album: track.album ? {
-        name: track.album.name,
-        release_date: track.album.release_date || '2020'
-      } : null
-    };
-  });
-  
-  // Filter and sort based on playlist type
-  let selectedTracks = [];
-  
-  if (playlistType === 'mood') {
-    // For mood, prioritize popular tracks (happy mood)
-    selectedTracks = tracks
-      .sort((a, b) => b.popularity - a.popularity)
-      .slice(0, 10);
-    
-  } else if (playlistType === 'genre') {
-    // For genre, try to get a mix of artists
-    // Group by artist first
-    const artistGroups = {};
-    tracks.forEach(track => {
-      const mainArtist = track.artist.split(',')[0].trim();
-      if (!artistGroups[mainArtist]) {
-        artistGroups[mainArtist] = [];
-      }
-      artistGroups[mainArtist].push(track);
-    });
-    
-    // Take one track from each artist until we have 10
-    const artists = Object.keys(artistGroups);
-    for (let i = 0; i < artists.length && selectedTracks.length < 10; i++) {
-      if (artistGroups[artists[i]].length > 0) {
-        selectedTracks.push(artistGroups[artists[i]][0]);
-      }
-    }
-    
-    // If we still need more tracks, add remaining popular ones
-    if (selectedTracks.length < 10) {
-      const remainingTracks = tracks
-        .filter(track => !selectedTracks.includes(track))
-        .sort((a, b) => b.popularity - a.popularity);
-      
-      selectedTracks = selectedTracks.concat(
-        remainingTracks.slice(0, 10 - selectedTracks.length)
-      );
-    }
-    
-  } else if (playlistType === 'throwback') {
-    // For throwback, prioritize older releases if we have release dates
-    selectedTracks = tracks
-      .sort((a, b) => {
-        // If we have release dates, sort by those
-        if (a.album && b.album && a.album.release_date && b.album.release_date) {
-          return a.album.release_date.localeCompare(b.album.release_date);
-        }
-        // Default to random for mix
-        return Math.random() - 0.5;
-      })
-      .slice(0, 10);
-  }
-  
-  // Ensure we have tracks
-  if (selectedTracks.length === 0) {
-    // Just take a random selection
-    selectedTracks = tracks
-      .sort(() => Math.random() - 0.5)
-      .slice(0, Math.min(10, tracks.length));
-  }
-  
-  // Ensure we don't exceed 10 tracks
-  selectedTracks = selectedTracks.slice(0, 10);
-  
-  console.log(`Generated playlist with ${selectedTracks.length} tracks`);
-  return selectedTracks;
-}
-
 // Function to save the generated playlist to Spotify
 async function savePlaylistToSpotify(playlistName, trackUris) {
   try {
@@ -1121,7 +940,6 @@ async function savePlaylistToSpotify(playlistName, trackUris) {
   }
 }
 
-// Update handleGeneratePlaylist to store the last generated playlist
 let lastGeneratedPlaylist = null;
 
 // Function to handle the "Save to Spotify" button click
