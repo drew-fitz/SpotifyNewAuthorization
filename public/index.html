@@ -115,7 +115,7 @@
 
 
     <button onclick="refreshTokenClick()">Refresh Token</button>
-    <button onclick="logoutClick()">Log out</button>
+    <button onclick="window.logoutClick()">Logout</button>
   </template>
 
   <template id="search-form-template">
@@ -188,6 +188,7 @@
     <div class="recommendations-actions">
       <button id="generate-recommendations-btn" onclick="generateCSVRecommendations()" disabled>Generate Recommendations</button>
       <button onclick="useSpotifyLikedSongs()" class="secondary-button">Refresh Songs Used</button>
+      <button onclick="logoutClick()" class="logout-btn">Log Out</button>
       <p id="liked-songs-status">No liked songs loaded</p>
     </div>
 
@@ -296,9 +297,34 @@
     color: #aaa;
     margin-top: 3px;
   }
+
+  .logout-message {
+  text-align: center;
+  margin: 40px auto;
+  max-width: 500px;
+  padding: 20px;
+  background-color: #f8f8f8;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.spotify-login-btn {
+  background-color: #1DB954;
+  color: white;
+  border: none;
+  border-radius: 30px;
+  padding: 12px 30px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 20px;
+}
+
+.spotify-login-btn:hover {
+  background-color: #1ed760;
+}
 </style>
 
-<!-- Add this JavaScript to enable/disable mood buttons based on data availability -->
+
 <script>
 // Function to update mood button states
 function updateMoodButtonStates() {
@@ -662,8 +688,6 @@ function renderRecommendationsTemplate(targetId, recommendationsData) {
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
   <script src="recommendation-engine.js"></script>
-  <script src="playlist-functions.js"></script>
-  <script src="mood-integration.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

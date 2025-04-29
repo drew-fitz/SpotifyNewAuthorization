@@ -270,6 +270,7 @@ async function initApp() {
   console.log("==== APP INITIALIZATION COMPLETED ====");
 }
 
+
 // createContainers function to log more information
 function createContainers() {
   const containers = [
@@ -3406,13 +3407,18 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
+window.logoutClick = function() {
+  localStorage.clear();
+  console.log("Logged out successfully");
+  window.location.href = redirectUrl;
+};
+
 // Add these functions to the window object for event handlers
 window.handleDatasetUpload = handleDatasetUpload;
 window.generateHappyRecommendations = generateHappyRecommendations;
 window.handleLikedSongsUpload = handleLikedSongsUpload;
 window.useSpotifyLikedSongs = useSpotifyLikedSongs;
 window.generateCSVRecommendations = generateCSVRecommendations;
-window.generateMoodBasedRecommendations = generateMoodBasedRecommendations;
 window.saveCSVRecommendationsToSpotify = saveCSVRecommendationsToSpotify;
 // Make these functions available to inline event handlers
 window.loginWithSpotifyClick = loginWithSpotifyClick;
