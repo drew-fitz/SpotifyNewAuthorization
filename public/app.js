@@ -216,10 +216,7 @@ async function initApp() {
       
       // Render search form
       renderTemplate("search-form-container", "search-form-template");
-      
-      // Render playlist generator
-      renderTemplate("playlist-generator-container", "playlist-generator-template");
-      
+            
       // Render CSV recommendations container
       renderTemplate("main", "logged-in-template", userData);
       renderTemplate("main", "csv-recommendations-container-template");
